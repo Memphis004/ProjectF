@@ -72,6 +72,49 @@ namespace LibplanetUnity
 
         public IEnumerable<IRenderer<PolymorphicAction<ActionBase>>> Renderers { get; private set; }
 
+        /// <summary>
+        /// Index of the current chain tip, or <c>-1</c> while the chain is not ready.
+        /// Safe to read from the main thread (e.g., by UI code polling it).
+        /// </summary>
+        public long TipIndex => _blockChain?.Tip?.Index ?? -1;
+
+        /// <summary>
+        /// Number of peers currently known to this node's swarm (excluding itself).
+        /// Safe to read from the main thread; returns <c>0</c> while the swarm is
+        /// starting up or shutting down.
+        /// </summary>
+        public int PeerCount
+        {
+            get
+            {
+                var swarm = _swarm;
+                if (ReferenceEquals(swarm, null))
+                {
+                    return 0;
+                }
+
+                try
+                {
+                    return swarm.Peers.Count;
+                }
+                catch (Exception)
+                {
+                    // The routing table is transiently unavailable during startup/teardown.
+                    return 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// True when this node mines blocks (i.e., it was started without --no-miner).
+        /// </summary>
+        public bool IsMiner => !ReferenceEquals(_miner, null);
+
+        /// <summary>
+        /// True once the swarm has finished starting and is exchanging messages.
+        /// </summary>
+        public bool IsSwarmRunning => _swarm?.Running ?? false;
+
         public static void Initialize(IEnumerable<IRenderer<PolymorphicAction<ActionBase>>> renderers)
         {
             instance.InitAgent(renderers);

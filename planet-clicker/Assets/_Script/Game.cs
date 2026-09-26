@@ -25,6 +25,7 @@ namespace _Script
         public Text countText;
         public Text addressText;
         public Text rankingText;
+        public Text syncText;
         public Click click;
         public ScrollRect rankingBoard;
         public RankingRow rankingRow;
@@ -34,6 +35,9 @@ namespace _Script
         private long _totalCount = 0;
         private Table<Level> _levelTable;
         private Dictionary<Address, int> _attacks = new Dictionary<Address, int>();
+        private const float SyncStatusInterval = 1.0f;
+        private float _syncStatusTimer;
+        private bool _signedIn;
 
         public class CountUpdated : UnityEvent<long>
         {
@@ -65,6 +69,8 @@ namespace _Script
 
         private void OnSignInCompleted()
         {
+            _signedIn = true;
+
             Agent.Initialize(
                 new[]
                 {
@@ -111,6 +117,14 @@ namespace _Script
             });
 
             var initialCount = agent.GetState(Agent.instance.Address);
+            // Poll the chain tip / peer count once a second so the player can see
+            // the sync status at a glance.
+            _syncStatusTimer = SyncStatusInterval;
+            if (!ReferenceEquals(syncText, null))
+            {
+                syncText.text = "Sync: starting...";
+            }
+
             var initialRanking = agent.GetState(RankingState.Address);
             if (initialCount is Bencodex.Types.Integer count)
             {
@@ -121,6 +135,22 @@ namespace _Script
             {
                 OnRankUpdated.Invoke(new RankingState(bdict));
             }
+        }
+
+        private void UpdateSyncStatus()
+        {
+            if (!_signedIn || ReferenceEquals(syncText, null))
+            {
+                return;
+            }
+
+            var agent = Agent.instance;
+            var tip = agent.TipIndex;
+            var peers = agent.PeerCount;
+            var role = agent.IsMiner ? "miner" : "peer";
+            var net = agent.IsSwarmRunning ? $", {peers} peer{(peers == 1 ? "" : "s")}" : "";
+            var tipStr = tip < 0 ? "-" : tip.ToString();
+            syncText.text = $"Block #{tipStr} ({role}{net})";
         }
 
         private void SetTimer(float time)
@@ -144,6 +174,13 @@ namespace _Script
                     _autoClickTimer = AutoClickInterval;
                     click.Plus();
                 }
+            }
+
+            _syncStatusTimer -= Time.deltaTime;
+            if (_signedIn && _syncStatusTimer <= 0f)
+            {
+                _syncStatusTimer = SyncStatusInterval;
+                UpdateSyncStatus();
             }
 
             if (_time > 0)
