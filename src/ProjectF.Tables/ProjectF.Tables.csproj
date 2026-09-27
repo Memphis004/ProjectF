@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Luban generated code lands in ./Gen (emitted by tools/gen.ps1, one run also
+    writes the binary tables into UnityProject/Assets/StreamingAssets/Tables).
+    The Luban C# runtime dependency is intentionally NOT referenced yet: until
+    codegen runs there is nothing that needs it. Stage 2 (tables pipeline) will
+    add the runtime reference together with the first generated output.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <RootNamespace>ProjectF.Tables</RootNamespace>
+  </PropertyGroup>
+
+</Project>

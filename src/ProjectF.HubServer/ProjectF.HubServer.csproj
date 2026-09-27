@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    ASP.NET Core + MagicOnion presence server. net8.0 (never loaded by Unity).
+    Kestrel HTTP/2 cleartext (h2c) on localhost:5170; the Unity client connects
+    through YetAnotherHttpHandler with Http2Only = true.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>ProjectF.HubServer</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MagicOnion 7.0.0 server runtime; Grpc.AspNetCore provides the Kestrel
+         gRPC endpoint plumbing MagicOnion maps onto. -->
+    <PackageReference Include="Grpc.AspNetCore" Version="2.66.0" />
+    <PackageReference Include="MagicOnion.Server" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProjectF.Shared\ProjectF.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

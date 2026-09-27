@@ -1,0 +1,21 @@
+<Project>
+
+  <!--
+    ProjectF — shared build settings for every project in the solution.
+
+    Rules from knowledge.md this file enforces:
+      * ProjectF.Lib / ProjectF.Shared / ProjectF.Tables target netstandard2.1
+        (set per-csproj; Unity must load those DLLs directly).
+      * Determinism: checked arithmetic is ON project-wide so an accidental
+        overflow inside an IAction.Execute() throws instead of silently
+        wrapping around on every node.
+  -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+</Project>

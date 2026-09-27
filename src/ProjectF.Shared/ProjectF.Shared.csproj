@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    MagicOnion contracts + MessagePack models shared by HubServer and Unity.
+    netstandard2.1 ONLY (knowledge.md rule 4). MessagePack explicit [Key(n)]
+    is mandatory here (knowledge.md rule 5) — added at Stage 4.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <RootNamespace>ProjectF.Shared</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MagicOnion 7.0.0: latest stable (2025-01-31). Abstractions carries the
+         IStreamingHub<,> contract surface; server/client packages are
+         referenced by HubServer / Unity respectively. MagicOnion 7.x builds
+         on MessagePack v3 — 2.5.x causes a NU1605 downgrade (restore-verified). -->
+    <PackageReference Include="MagicOnion.Abstractions" Version="7.0.0" />
+    <PackageReference Include="MessagePack" Version="3.1.10" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    xUnit tests for the on-chain core. net8.0 per knowledge.md rule 4.
+    Libplanet.Mocks provides IActionContext/IWorld test doubles so actions can
+    be executed deterministically with a chosen RandomSeed.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>ProjectF.Lib.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Libplanet.Mocks" Version="5.5.3" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProjectF.Lib\ProjectF.Lib.csproj" />
+  </ItemGroup>
+
+</Project>

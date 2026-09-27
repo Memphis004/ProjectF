@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The on-chain core: Bencodex states + IAction implementations.
+    netstandard2.1 ONLY (knowledge.md rule 4) — this DLL is copied verbatim
+    into Unity by tools/sync-dlls.ps1.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <RootNamespace>ProjectF.Lib</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Libplanet 5.5.3: latest stable (2025-09-17). IAction.Execute returns
+         IWorld; IActionContext.PreviousState is IWorld; GetRandom() on context.
+         Verified against docs.libplanet.io/5.5.3 before pinning. -->
+    <PackageReference Include="Libplanet" Version="5.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProjectF.Tables\ProjectF.Tables.csproj" />
+  </ItemGroup>
+
+</Project>

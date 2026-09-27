@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Headless Libplanet node + block producer. net8.0 (never loaded by Unity).
+    Block production in Libplanet 5.x goes through BlockChain.ProposeBlock
+    (PoW MineBlock was removed in 4.6/5.0) — the miner loop honours
+    TargetBlockIntervalMs and retries against the new tip on races.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>ProjectF.SeedNode</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Libplanet.Net: P2P swarm (also netstandard2.1-compatible, but the
+         SeedNode itself is a plain net8.0 console app). -->
+    <PackageReference Include="Libplanet" Version="5.5.3" />
+    <PackageReference Include="Libplanet.Net" Version="5.5.3" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProjectF.Lib\ProjectF.Lib.csproj" />
+  </ItemGroup>
+
+</Project>
