@@ -24,10 +24,12 @@
   "customEntityTags": "",
   "customConceptTags": "",
   "extractionGranularity": "standard",
-  "autoWatchSources": false,
-  "autoWatchMode": "notify",
+  "autoWatchSources": true,
+  "autoWatchMode": "auto",
   "autoWatchDebounceMs": 5000,
-  "watchedFolders": [],
+  "watchedFolders": [
+    "sources/"
+  ],
   "periodicLint": "off",
   "startupCheck": true,
   "startupCheckNoticeLevel": "visible",
