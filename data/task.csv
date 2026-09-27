@@ -1,0 +1,8 @@
+﻿##var,id,type,target_item_id,target_count,required_level,reward_gold,reward_exp,reward_item_id,reward_item_count
+##type,int,TaskType,int,int,int,int,int,int,int
+,1,DeliverFish,3001,3,1,40,30,0,0
+,2,DeliverFish,3003,2,2,70,60,0,0
+,3,DeliverFood,7001,2,1,50,35,1001,5
+,4,DeliverFood,7003,1,2,90,70,1002,3
+,5,DeliverCrop,5001,5,1,30,25,0,0
+,6,DeliverCrop,5003,3,2,60,45,4001,2

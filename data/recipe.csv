@@ -1,0 +1,5 @@
+﻿##var,id,name_key,required_level,stamina_cost,result_item_id,great_result_item_id,exp_reward,stamina_restore,great_stamina_restore
+##type,int,string,int,int,int,int,int,int,int
+,1,RECIPE_NAME_GRILLED_FISH,1,3,7001,7002,15,15,30
+,2,RECIPE_NAME_FISH_SOUP,2,5,7003,7004,30,25,50
+,3,RECIPE_NAME_SPICY_FISH,3,8,7005,7006,45,40,60

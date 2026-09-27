@@ -1,0 +1,5 @@
+﻿##var,id,item_id,hit_bonus,rare_bonus
+##type,int,int,int,int
+,1001,1001,5,0
+,1002,1002,12,3
+,1003,1003,20,10

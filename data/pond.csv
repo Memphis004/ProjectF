@@ -1,0 +1,3 @@
+﻿##var,id,name_key,scene_id,required_level,base_hit_rate,slot_count,occupy_blocks
+##type,int,string,int,int,int,int,int
+,1,POND_NAME_VILLAGE_SMALL,4,1,40,2,120

@@ -1,0 +1,13 @@
+##var,full_name,value_type,index,mode,group,comment,read_schema_from_file,input,output,tags
+,TbItem,Item,,map,,,true,item.csv,,
+,TbFish,Fish,,map,,,true,fish.csv,,
+,TbBait,Bait,,map,,,true,bait.csv,,
+,TbRod,Rod,,map,,,true,rod.csv,,
+,TbPond,Pond,,map,,,true,pond.csv,,
+,TbPondFish,PondFish,,map,,,true,pond_fish.csv,,
+,TbRecipe,Recipe,,map,,,true,recipe.csv,,
+,TbRecipeMaterial,RecipeMaterial,,map,,,true,recipe_material.csv,,
+,TbSeed,Seed,,map,,,true,seed.csv,,
+,TbShop,ShopEntry,,map,,,true,shop.csv,,
+,TbTask,Task,,map,,,true,task.csv,,
+,TbLevelExp,LevelExp,level,list,,,true,level_exp.csv,,

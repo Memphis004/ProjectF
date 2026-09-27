@@ -1,0 +1,6 @@
+##var,id,pond_id,fish_id
+##type,int,int,int
+,1,1,3001
+,2,1,3002
+,3,1,3003
+,4,1,3004

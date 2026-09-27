@@ -1,0 +1,5 @@
+﻿##var,id,seed_item_id,crop_item_id,grow_blocks,stamina_cost,yield_min,yield_max
+##type,int,int,int,int,int,int,int
+,4001,4001,5001,180,2,2,4
+,4002,4002,5002,300,2,2,4
+,4003,4003,5003,450,3,3,5

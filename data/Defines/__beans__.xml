@@ -1,0 +1,19 @@
+<module name="">
+    <!-- Enum schemas for ProjectF tables. XML (not __beans__.csv) because the
+         Luban v5.1.0 csv bean loader requires merged-cell style nested titles,
+         which plain CSV cannot express. -->
+    <enum name="ItemCategory">
+        <var name="Bait" value="1"/>
+        <var name="Rod" value="2"/>
+        <var name="Fish" value="3"/>
+        <var name="Seed" value="4"/>
+        <var name="Crop" value="5"/>
+        <var name="Material" value="6"/>
+        <var name="Food" value="7"/>
+    </enum>
+    <enum name="TaskType">
+        <var name="DeliverFish" value="1"/>
+        <var name="DeliverFood" value="2"/>
+        <var name="DeliverCrop" value="3"/>
+    </enum>
+</module>

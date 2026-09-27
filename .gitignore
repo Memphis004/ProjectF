@@ -55,6 +55,10 @@ sysinfo.txt
 # NOTE: *.meta files are REQUIRED in version control and are not ignored.
 
 # ----- Generated / synced artifacts (regenerable via tools/*.ps1) -----
+# Luban.dll itself — download from https://github.com/focus-creative-games/luban/releases
+# (see the failure message in tools/gen.ps1)
+tools/luban/*
+!tools/luban/.gitkeep
 # Luban C# output (tools/gen.ps1)
 src/ProjectF.Tables/Gen/*
 !src/ProjectF.Tables/Gen/.gitkeep
