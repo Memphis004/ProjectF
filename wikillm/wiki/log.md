@@ -22,3 +22,11 @@ Every ingest, lint run, and maintenance operation is recorded here automatically
 
 **Updated pages**：[[entities/projectf.md]], [[entities/seednode.md]]
 
+
+
+## [2026-09-28 03:24] ingest | usually_p · 866s · ornith-1.5:9b · 136B
+
+**Created pages**：[[sources/usually_p_d62559.md]], [[concepts/wiki-ingest.md]], [[concepts/wiki-lint.md]], [[concepts/usually_p.md]]
+
+**Updated pages**：
+

@@ -46,3 +46,12 @@ public class FailedLoadStateException : Exception
     {
     }
 }
+
+/// <summary>The transaction signer does not own the avatar it tries to mutate.</summary>
+public class PermissionDeniedException : Exception
+{
+    public PermissionDeniedException(string message)
+        : base(message)
+    {
+    }
+}

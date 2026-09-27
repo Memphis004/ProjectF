@@ -22,10 +22,41 @@ public class PingActionTests
     [Fact]
     public void Execute_IncrementsCounterFromZero()
     {
-        // TODO(stage-1): exercise via Libplanet.Mocks IActionContext once the
-        // mock factory surface is verified; the pipeline-proof checkpoint
-        // (Unity -> sign -> mine -> read state) is the primary gate.
-        var action = new PingAction(1);
-        Assert.Equal("ping_v1", action.TypeId);
+        var world = new TestWorld();
+        var signer = new Libplanet.Crypto.PrivateKey();
+        var context = TestActionContext.Create(world.World, signer.Address, blockIndex: 1);
+
+        world.Execute(new PingAction(1), context);
+
+        Assert.Equal((Integer)1, world.GetState(Addresses.Ping, Addresses.PingCounter));
+    }
+
+    [Fact]
+    public void Execute_AccumulatesAcrossBlocks()
+    {
+        var world = new TestWorld();
+        var signer = new Libplanet.Crypto.PrivateKey().Address;
+        var context = TestActionContext.Create(world.World, signer, blockIndex: 1);
+
+        world.Execute(new PingAction(1), context);
+        context = TestActionContext.Create(world.World, signer, blockIndex: 2);
+        world.Execute(new PingAction(41), context);
+
+        Assert.Equal((Integer)42, world.GetState(Addresses.Ping, Addresses.PingCounter));
+    }
+
+    [Fact]
+    public void Execute_RoundTripsThroughPlainValue()
+    {
+        var world = new TestWorld();
+        var signer = new Libplanet.Crypto.PrivateKey().Address;
+        var context = TestActionContext.Create(world.World, signer, blockIndex: 1);
+
+        var original = new PingAction(7);
+        var rehydrated = new PingAction();
+        rehydrated.LoadPlainValue(original.PlainValue);
+        world.Execute(rehydrated, context);
+
+        Assert.Equal((Integer)7, world.GetState(Addresses.Ping, Addresses.PingCounter));
     }
 }

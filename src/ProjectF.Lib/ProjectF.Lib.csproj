@@ -21,4 +21,12 @@
     <ProjectReference Include="..\ProjectF.Tables\ProjectF.Tables.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Luban binaries (tools/gen.ps1 output) embedded into the DLL so on-chain
+         action execution reads game data with zero file I/O. Resource names
+         become ProjectF.Lib.Resources.<table>.bytes (see GameTables.cs). -->
+    <EmbeddedResource Include="..\..\UnityProject\Assets\StreamingAssets\Tables\*.bytes"
+                      LinkBase="Resources" />
+  </ItemGroup>
+
 </Project>

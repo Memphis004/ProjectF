@@ -16,6 +16,9 @@
 
 ## Concepts
 
+- [[concepts/usually_p|usually_p]] `aliases: wiki source refreshing, ingest-to-lint workflow` - usually_p is the first extraction round of a process that refreshes the wikillm source collection fr
+- [[concepts/wiki-lint|wiki-lint]] `aliases: Wiki lint pass, lint step, wiki linting` - **Wiki lint** is the post-ingestion quality and consolidation step for wikillm sources. It is a main
+- [[concepts/wiki-ingest|wiki-ingest]] `aliases: Wiki ingest pipeline, Ingest step` - "Wiki ingest" is the ingestion pipeline that loads extracted notes into the wikillm source collectio
 - [[concepts/netprobe-lessons|netprobe-lessons]] `aliases: netprobe lesson, run-netprobe lessons, ProjectF netprobe postmortem` - A catalog of ten hard-won engineering lessons from a technical postmortem in which a researcher auto
 - [[concepts/delta-based-ping-counter-baseline|delta-based-ping-counter-baseline]] `aliases: relative ping baseline, delta ping criterion, ping delta check` - The delta-based ping counter baseline is the transaction-confirmation criterion introduced after obs
 - [[concepts/per-genesis-disk-store|per-genesis-disk-store]] `aliases: disk-backed chain store, chain id store, namespaced chain store, per-genesis store` - A per-genesis disk store is a persistence technique used to replace a `MemoryStore`, which re-downlo
@@ -24,5 +27,6 @@
 
 ## Sources
 
+- [[sources/usually_p_d62559|usually_p_d62559]] `aliases: Roleplay note ingestion pipeline, wikillm source refresh from netprobe`
 - [[sources/netprobe-lessons_598136|netprobe-lessons_598136]] `aliases: run-netprobe Lessons, Stage 2.5 failure modes, Netprobe postmortem`
 - [[sources/auto-watch-test_65d124|auto-watch-test_65d124]] `aliases: Auto-Watch Test, Auto-Watch Test Note, karpathywiki Auto-Watch Test`

@@ -56,7 +56,7 @@ public abstract class ActionBase : IAction
     public IWorld Execute(IActionContext context)
     {
         // knowledge.md rule 2: Execute() must be 100% deterministic — no wall
-        // clock, no System.Random, no I/O. Only context.BlockIndex,
+        // clock, no process-seeded RNG, no I/O. Only context.BlockIndex,
         // context.GetRandom() and the action's decoded payload may influence
         // the result. Libplanet re-executes actions on every node.
         return ExecuteInternal(context);
@@ -109,10 +109,7 @@ public abstract class ActionBase : IAction
     {
         if (context.Signer != avatarAddress)
         {
-            // TODO(stage-3): dedicated PermissionDeniedException once the
-            // action set lands; InvalidOperationException is enough for the
-            // pipeline-proof checkpoint.
-            throw new InvalidOperationException(
+            throw new PermissionDeniedException(
                 $"Signer {context.Signer} is not the owner of avatar {avatarAddress}.");
         }
     }
