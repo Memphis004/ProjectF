@@ -15,8 +15,8 @@
 #      blocks, then reports PASS/FAIL and leaves both logs for diagnosis.
 
 param(
-    [string]$BuildExe = "C:\UnityProjects\planet-clicker\planet-clicker\Build\Windows\PlanetClicker.exe",
-    [string]$WorkDir  = "C:\UnityProjects\planet-clicker",
+    [string]$BuildExe = "C:\UnityProjects\ProjectF\UnityProject\Build\Windows\UnityProject.exe",
+    [string]$WorkDir  = "C:\UnityProjects\ProjectF",
     [int]$PortA = 39710,
     [int]$PortB = 39711,
     [int]$SeedWaitSeconds = 25,

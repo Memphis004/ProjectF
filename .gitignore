@@ -41,15 +41,15 @@ sysinfo.txt
 .sln.DotSettins
 
 # Unity Editor
-/planet-clicker/UserSettings/
-/planet-clicker/Logs/
+/UnityProject/UserSettings/
+/UnityProject/Logs/
 
 # Rider
-/planet-clicker/.idea
-/planet-clicker/Assets/Plugins/Editor/JetBrains*
+/UnityProject/.idea
+/UnityProject/Assets/Plugins/Editor/JetBrains*
 
 # UnityTestRunner
-/planet-clicker/Assets/InitTestscene*.unity*
+/UnityProject/Assets/InitTestscene*.unity*
 
 # gVim
 *.swp
