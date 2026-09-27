@@ -30,6 +30,12 @@ public sealed class NodeOptions
     /// <summary>Target interval between blocks in milliseconds.</summary>
     public int TargetBlockIntervalMs { get; set; } = 2_000;
 
-    /// <summary>Seed peers as "{pubkeyHex},{host},{port}" strings.</summary>
+    /// <summary>Seed peers as "{pubkeyHex},{host},{port}" strings. When set
+    /// from the command line, '|' separates multiple peers.</summary>
     public string[] StaticPeers { get; set; } = System.Array.Empty<string>();
+
+    /// <summary>The pre-signed AppProtocolVersion token (see
+    /// AppProtocolVersion.Token) every node in the network must present.
+    /// Empty = self-sign version 1 (single-node dev mode).</summary>
+    public string ApvToken { get; set; } = "";
 }

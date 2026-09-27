@@ -161,8 +161,6 @@ namespace ProjectF.Editor
             string storeDir)
         {
             Debug.Log("[net-probe] step 1: reading bootstrap files…");
-            var seedKey = new PrivateKey(
-                System.IO.File.ReadAllText(System.IO.Path.Combine(storeDir, "privkey.txt")).Trim());
             var seedPeer = Libplanet.Net.BoundPeer.ParsePeer(
                 System.IO.File.ReadAllText(System.IO.Path.Combine(storeDir, "peer.txt")).Trim());
             var genesisBytes = System.IO.File.ReadAllBytes(
@@ -239,12 +237,14 @@ namespace ProjectF.Editor
                     actionEvaluator);
             Debug.Log($"[net-probe] chain ready (tip #{chain.Tip.Index})");
 
-            // Same AppProtocolVersion (signed by the seed key) on both sides so
-            // no peer rejects the other's messages in this closed dev network.
-            var apv = Libplanet.Net.AppProtocolVersion.Sign(seedKey, 1);
+            // Present the seed's pre-signed AppProtocolVersion token (apv.txt,
+            // written by the SeedNode next to genesis.dat / peer.txt) — Libplanet
+            // drops inbound messages whose signed APV differs, signer included.
             var apvOptions = new Libplanet.Net.Options.AppProtocolVersionOptions
             {
-                AppProtocolVersion = apv,
+                AppProtocolVersion = Libplanet.Net.AppProtocolVersion.FromToken(
+                    System.IO.File.ReadAllText(
+                        System.IO.Path.Combine(storeDir, "apv.txt")).Trim()),
             };
             var hostOptions = new Libplanet.Net.Options.HostOptions(
                 "127.0.0.1", System.Array.Empty<Libplanet.Net.IceServer>(), 0);

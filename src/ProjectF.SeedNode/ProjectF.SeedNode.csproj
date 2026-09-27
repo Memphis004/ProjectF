@@ -18,6 +18,9 @@
     <PackageReference Include="Libplanet" Version="5.5.3" />
     <PackageReference Include="Libplanet.Net" Version="5.5.3" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <!-- Libplanet logs through Serilog's static Log.Logger; without a sink
+         configured every internal trace (ping/pong, peer table, sync) is lost. -->
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
   </ItemGroup>
 
   <ItemGroup>

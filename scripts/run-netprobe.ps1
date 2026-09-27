@@ -7,9 +7,12 @@
   Automates the pipeline proven in Stage 2.5:
     1. dotnet build ProjectF.sln
     2. Start ProjectF.SeedNode against -StorePath, reusing the ORIGINAL validator
-       key from <StorePath>/privkey.txt when present (restart determinism: the
+       key from artifacts/validator.key when present (restart determinism: the
        stored chain validates its genesis against the key-derived genesis; a
-       fresh ephemeral key throws InvalidGenesisBlockException).
+       fresh ephemeral key throws InvalidGenesisBlockException). The SeedNode no
+       longer persists its key itself (privkey.txt was removed in the Stage 5
+       follower-mode rework; apv.txt replaced it), so this script owns key
+       stability: it generates the key on first run and reuses it after.
     3. Fire the network probe inside the Unity editor via the MCP CLI
        (script-execute launcher -> background thread -> result JSON file).
     4. Poll the result file; PASS = counter strictly increased over baseline.
@@ -20,7 +23,7 @@
   should be done in the editor beforehand.
 
 .PARAMETER StorePath
-  Seed store directory (holds genesis.dat / peer.txt / privkey.txt).
+  Seed store directory (holds genesis.dat / peer.txt / apv.txt).
   Default: $env:TEMP/pf-seed
 
 .PARAMETER SeedPort
@@ -90,7 +93,7 @@ try {
 
     # ---- 2. Seed node -------------------------------------------------------------
     Write-Host "==> [2/5] starting SeedNode (store: $StorePath)" -ForegroundColor Cyan
-    Stop-SeedNode   # a stale seed with an in-memory store would poison privkey.txt
+    Stop-SeedNode   # a stale seed would keep the port bound and serve an old chain
 
     if ($FreshSeed) {
         # New chain: wipe seed store AND every per-genesis probe store
@@ -101,15 +104,22 @@ try {
     }
 
     $env:PF_SeedNode__StorePath = $StorePath
-    $privKeyFile = Join-Path $StorePath 'privkey.txt'
-    if (Test-Path $privKeyFile) {
+    $keyFile = Join-Path $artifacts 'validator.key'
+    if (Test-Path $keyFile) {
         # Restart determinism (Stage 2.5 lesson #1): reuse the original key or the
         # ctor rejects the store with InvalidGenesisBlockException.
-        $env:PF_SeedNode__PrivateKeyHex = (Get-Content $privKeyFile -Raw).Trim()
-        Write-Host '    validator key: reused from privkey.txt' -ForegroundColor DarkGray
+        $env:PF_SeedNode__PrivateKeyHex = (Get-Content $keyFile -Raw).Trim()
+        Write-Host '    validator key: reused from artifacts/validator.key' -ForegroundColor DarkGray
     }
     else {
-        Write-Host '    validator key: fresh (first run - bootstrap files will be written)' -ForegroundColor DarkGray
+        # First run: generate once and persist script-side (the SeedNode no
+        # longer writes privkey.txt). This keeps restarts on the same chain and
+        # existing per-genesis probe stores valid.
+        $keyBytes = New-Object byte[] 32
+        [System.Security.Cryptography.RandomNumberGenerator]::Fill($keyBytes)
+        $env:PF_SeedNode__PrivateKeyHex = ([System.BitConverter]::ToString($keyBytes) -replace '-', '').ToLowerInvariant()
+        Set-Content -Path $keyFile -Value $env:PF_SeedNode__PrivateKeyHex -NoNewline -Encoding ASCII
+        Write-Host "    validator key: generated -> $keyFile" -ForegroundColor DarkGray
     }
 
     # Launch the seed DETACHED (Win32_Process.Create) so it survives the caller

@@ -64,29 +64,74 @@ public sealed class SwarmRunner : IAsyncDisposable
             stateStore: stateStore,
             actionTypeLoader: actionLoader);
 
-        ValidatorSet = new ValidatorSet(
-            new System.Collections.Generic.List<Validator>
+        Block genesisBlock;
+        if (!string.IsNullOrWhiteSpace(_options.GenesisPath)
+            && System.IO.File.Exists(_options.GenesisPath))
+        {
+            // Follower mode: load the exact genesis bytes the seed produced.
+            // A follower's node key differs from the validator's, so it cannot
+            // derive the genesis locally — and Libplanet peer identity IS the
+            // node key, so two nodes must never share one key.
+            var codec = new Bencodex.Codec();
+            var marshaled = (Bencodex.Types.Dictionary)codec.Decode(
+                System.IO.File.ReadAllBytes(_options.GenesisPath));
+            genesisBlock = BlockMarshaler.UnmarshalBlock(marshaled);
+            Console.WriteLine($"Loaded genesis from {_options.GenesisPath}");
+
+            // Deterministically re-execute the genesis tx in OUR state store.
+            // The BlockChain ctor re-evaluates the tip against its recorded
+            // state root, which only exists locally if the genesis states were
+            // committed here (the validator does the same via
+            // BuildGenesisContext before Create). Libplanet actions are
+            // deterministic, so the root must match the header exactly.
+            var preEval = new PreEvaluationBlock(
+                genesisBlock.Header,
+                genesisBlock.Transactions,
+                genesisBlock.Evidence);
+            IReadOnlyList<ICommittedActionEvaluation> genesisEvals =
+                actionEvaluator.Evaluate(preEval, null);
+            if (!genesisEvals[^1].OutputState.Equals(genesisBlock.StateRootHash))
             {
-                new(_nodeKey.PublicKey, BigInteger.One),
-            });
+                throw new InvalidOperationException(
+                    $"Genesis state root mismatch: genesis.dat evaluates to " +
+                    $"{genesisEvals[^1].OutputState} but the block header says " +
+                    $"{genesisBlock.StateRootHash}. The genesis file does not " +
+                    "match this action set — regenerate it from the seed node.");
+            }
+            Console.WriteLine($"Genesis state committed locally (root {genesisBlock.StateRootHash}).");
+        }
+        else
+        {
+            // Validator mode: derive the deterministic genesis from this
+            // node's key (the node key IS the chain validator here).
+            ValidatorSet = new ValidatorSet(
+                new System.Collections.Generic.List<Validator>
+                {
+                    new(_nodeKey.PublicKey, BigInteger.One),
+                });
 
-        // The genesis tx signer must be the chain validator; for the closed
-        // test network the node key IS the validator key.
-        GenesisContext genesis = GenesisBuilder.BuildGenesisContext(
-            _nodeKey,
-            ValidatorSet,
-            actionEvaluator);
+            GenesisContext genesis = GenesisBuilder.BuildGenesisContext(
+                _nodeKey,
+                ValidatorSet,
+                actionEvaluator);
+            genesisBlock = genesis.GenesisBlock;
+        }
 
-        Chain = BootChain(store, stateStore, policy, actionEvaluator, genesis);
+        Chain = BootChain(store, stateStore, policy, actionEvaluator, genesisBlock);
 
         Console.WriteLine($"Genesis block: {Chain.Genesis.Hash}");
         Console.WriteLine($"Node address:  {_nodeKey.Address}");
         Console.WriteLine("[boot] chain ready");
 
+        // Every node presents the seed's pre-signed APV token — Libplanet
+        // drops inbound messages whose signed APV differs (signer included).
+        AppProtocolVersion apv = string.IsNullOrWhiteSpace(_options.ApvToken)
+            ? AppProtocolVersion.Sign(_nodeKey, 1)
+            : AppProtocolVersion.FromToken(_options.ApvToken.Trim());
+
         // Dev convenience: shareable bootstrapping artifacts. A joining node
-        // (Unity) cannot reconstruct the genesis deterministically — it needs
-        // the block bytes plus the peer string. DEV-ONLY: privkey.txt lets the
-        // Unity probe present the same AppProtocolVersion as the seed.
+        // (Unity or a follower) cannot reconstruct the genesis
+        // deterministically — it needs the block bytes plus the peer string.
         if (!string.IsNullOrWhiteSpace(_options.StorePath))
         {
             var codec = new Bencodex.Codec();
@@ -96,8 +141,7 @@ public sealed class SwarmRunner : IAsyncDisposable
             System.IO.File.WriteAllText(
                 System.IO.Path.Combine(_options.StorePath, "peer.txt"), PeerInfo);
             System.IO.File.WriteAllText(
-                System.IO.Path.Combine(_options.StorePath, "privkey.txt"),
-                Convert.ToHexString(_nodeKey.ByteArray.ToArray()));
+                System.IO.Path.Combine(_options.StorePath, "apv.txt"), apv.Token);
             Console.WriteLine($"Bootstrap files written to {_options.StorePath}");
         }
 
@@ -106,7 +150,7 @@ public sealed class SwarmRunner : IAsyncDisposable
             _options.Host, Array.Empty<IceServer>(), _options.Port);
         var appProtocolVersionOptions = new AppProtocolVersionOptions
         {
-            AppProtocolVersion = AppProtocolVersion.Sign(_nodeKey, 1),
+            AppProtocolVersion = apv,
         };
         var swarmOptions = new SwarmOptions
         {
@@ -145,17 +189,42 @@ public sealed class SwarmRunner : IAsyncDisposable
         }
         Console.WriteLine("[boot] swarm running");
 
+        // Status heartbeat on EVERY node (miner or follower): without it a
+        // follower prints nothing after boot and two-node discovery is
+        // invisible in the log.
+        _ = RunStatusLoopAsync(cancellationToken);
+
         if (_options.StaticPeers.Length > 0)
         {
+            // Log the outcome instead of discarding it — a failed bootstrap
+            // (unreachable peer, bad string) otherwise disappears silently.
+            // dialTimeout must be finite: null means PingAsync waits forever.
             _ = Swarm.BootstrapAsync(
-                _options.StaticPeers.Select(PeerString.Parse),
-                null,
-                3,
-                cancellationToken);
+                    _options.StaticPeers.Select(PeerString.Parse),
+                    TimeSpan.FromSeconds(5),
+                    3,
+                    cancellationToken)
+                .ContinueWith(
+                    t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            Exception? inner = t.Exception?.GetBaseException();
+                            Console.Error.WriteLine(
+                                $"[boot] BootstrapAsync failed: {inner?.GetType().Name}: {inner?.Message}");
+                        }
+                        else
+                        {
+                            Console.WriteLine("[boot] BootstrapAsync completed (peer table seeded).");
+                        }
+                    },
+                    CancellationToken.None);
         }
 
         Console.WriteLine("Peer string (paste into Unity NetworkSettings.SeedPeers):");
         Console.WriteLine($"  {PeerInfo}");
+        Console.WriteLine("APV token (pass to joining nodes as --SeedNode:ApvToken=…):");
+        Console.WriteLine($"  {appProtocolVersionOptions.AppProtocolVersion.Token}");
     }
 
     public async ValueTask DisposeAsync()
@@ -197,6 +266,33 @@ public sealed class SwarmRunner : IAsyncDisposable
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Swarm stopped with error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Every 5s: connected-peer count + tip index. Two synced nodes both print
+    /// Peers: 1 with equal Tip indexes — this is the visible proof of mutual
+    /// discovery and convergence.
+    /// </summary>
+    private async Task RunStatusLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                int peers = Swarm?.Peers.Count ?? 0;
+                Console.WriteLine(
+                    $"[status] Peers: {peers}, Tip: #{Chain.Tip.Index}");
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[status] error: {ex.Message}");
+            }
         }
     }
 
@@ -247,7 +343,7 @@ public sealed class SwarmRunner : IAsyncDisposable
         TrieStateStore stateStore,
         IBlockPolicy policy,
         ActionEvaluator actionEvaluator,
-        GenesisContext genesis)
+        Block genesisBlock)
     {
         Guid? chainId = store.GetCanonicalChainId();
         if (chainId is null)
@@ -264,14 +360,14 @@ public sealed class SwarmRunner : IAsyncDisposable
 
         if (chainId is { })
         {
-            // Restart case: the ctor validates the stored genesis against our
-            // deterministic genesis and loads the chain with its tip.
+            // Restart case: the ctor validates the stored genesis against the
+            // given genesis block and loads the chain with its tip.
             return new BlockChain(
                 policy,
                 new VolatileStagePolicy(),
                 store,
                 stateStore,
-                genesis.GenesisBlock,
+                genesisBlock,
                 new BlockChainStates(store, stateStore),
                 actionEvaluator);
         }
@@ -282,7 +378,7 @@ public sealed class SwarmRunner : IAsyncDisposable
             new VolatileStagePolicy(),
             store,
             stateStore,
-            genesis.GenesisBlock,
+            genesisBlock,
             actionEvaluator);
     }
 }
