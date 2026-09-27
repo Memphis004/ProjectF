@@ -53,5 +53,8 @@
   "customQueryInstructions": "",
   "bedrockRegion": "us-east-1",
   "bedrockAuthMethod": "api-key",
-  "bedrockSsoStartUrl": ""
+  "bedrockSsoStartUrl": "",
+  "_migrated_v1_23_0_startup_notice": true,
+  "_migrated_v1_25_3_secret_storage": true,
+  "_migrated_v1_27_0_markdown_conversion_backend": true
 }
