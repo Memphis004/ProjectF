@@ -100,7 +100,8 @@ namespace ProjectF.Infrastructure.Blockchain
                 || snapshot.FishingExp != _last.FishingExp
                 || snapshot.CookingExp != _last.CookingExp
                 || snapshot.KitchenUnlocked != _last.KitchenUnlocked
-                || !InventoryEquals(_last.Inventory, snapshot.Inventory);
+                || !InventoryEquals(_last.Inventory, snapshot.Inventory)
+                || !TasksEquals(_last.Tasks, snapshot.Tasks);
 
             _lastTip = tip;
             _last = snapshot;
@@ -131,6 +132,7 @@ namespace ProjectF.Infrastructure.Blockchain
 
             IValue? avatarValue = _client.GetState(Addresses.Avatar, avatarAddress);
             IValue? invValue = _client.GetState(Addresses.Inventory, avatarAddress);
+            IValue? taskBoardValue = _client.GetState(Addresses.TaskBoard, avatarAddress);
 
             long stamina = 0, maxStamina = 0, gold = 0, fishingExp = 0, cookingExp = 0;
             string name = string.Empty;
@@ -163,11 +165,44 @@ namespace ProjectF.Infrastructure.Blockchain
                 }
             }
 
+            // Stage 10: taskboard (never exists before create_avatar — empty).
+            var tasks = new Dictionary<int, bool>();
+            long tasksLastRerolledAt = 0;
+            if (taskBoardValue is Dictionary taskDict)
+            {
+                var board = new TaskBoardState(taskDict);
+                foreach (KeyValuePair<int, bool> kv in board.Tasks)
+                {
+                    tasks[kv.Key] = kv.Value;
+                }
+
+                tasksLastRerolledAt = board.LastRerolledAt;
+            }
+
             return AvatarSnapshot.FromStates(
                 name, tip, stamina, maxStamina, gold,
                 AvatarState.LevelFromExp(fishingExp), fishingExp,
                 AvatarState.LevelFromExp(cookingExp), cookingExp,
-                kitchen, inventory);
+                kitchen, inventory, tasks, tasksLastRerolledAt);
+        }
+
+        private static bool TasksEquals(
+            IReadOnlyDictionary<int, bool> a, IReadOnlyDictionary<int, bool> b)
+        {
+            if (a.Count != b.Count)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<int, bool> kv in a)
+            {
+                if (!b.TryGetValue(kv.Key, out bool completed) || completed != kv.Value)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool InventoryEquals(

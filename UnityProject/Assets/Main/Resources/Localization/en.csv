@@ -68,3 +68,37 @@ POND_NAME_VILLAGE_SMALL,Village Pond
 RECIPE_NAME_GRILLED_FISH,Grilled Fish
 RECIPE_NAME_FISH_SOUP,Fish Soup
 RECIPE_NAME_SPICY_FISH,Spicy Fish
+ERR_NOT_ENOUGH_STAMINA,Out of stamina — eat something and rest
+ERR_NOT_ENOUGH_GOLD,Not enough gold
+ERR_ITEM_NOT_FOUND,You don't have enough of that item
+ERR_POND_FULL,The pond is full — wait for a free slot
+ERR_PERMISSION_DENIED,That avatar is not yours
+ERR_STATE_CORRUPT,State error — please try again
+ERR_TIMEOUT,Request timed out — please try again
+ERR_CANCELLED,Cancelled
+ERR_UNKNOWN,Something went wrong — please try again
+UI_INTERACT_KEY,[E]
+SHOP_PROMPT,Talk to the shopkeeper
+TASK_PROMPT,Check the task board
+KITCHEN_PROMPT,Use the kitchen
+SHOP_BUY,Buy
+SHOP_SELL,Sell
+SHOP_TOTAL,Total
+SHOP_LOCK,Lv
+SHOP_BOUGHT,Purchase complete
+SHOP_SOLD,Sale complete
+TASK_DELIVER,Deliver
+TASK_DONE,Done
+TASK_REWARD,Reward {0}G {1}exp
+TASK_SUBMIT,Submit
+TASK_REROLL,New tasks in {0} blocks (~{1} min)
+TASK_REWARD_TITLE,Rewards
+TASK_REWARD_GOLD,Gold
+TASK_REWARD_EXP,Exp
+KITCHEN_LOCKED,Not unlocked yet — talk to Auntie first
+KITCHEN_PICK_RECIPE,Pick a recipe
+KITCHEN_DETAIL,stamina {0} · great {1}%
+KITCHEN_CRAFT,Cook
+KITCHEN_RESULT_NORMAL,Dish cooked
+KITCHEN_RESULT_GREAT,GREAT dish!
+EAT_DONE,Ate — stamina restored

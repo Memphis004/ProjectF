@@ -38,6 +38,16 @@ namespace ProjectF.Infrastructure
         [SerializeField]
         private RectTransform confirmDialogPrefab = default!;
 
+        [Header("Stage 10 windows")]
+        [SerializeField]
+        private RectTransform shopWindowPrefab = default!;
+
+        [SerializeField]
+        private RectTransform taskBoardWindowPrefab = default!;
+
+        [SerializeField]
+        private RectTransform craftWindowPrefab = default!;
+
         [SerializeField]
         private SpriteRegistryAsset spriteRegistry = default!;
 
@@ -104,11 +114,17 @@ namespace ProjectF.Infrastructure
                 Toast = toastPrefab,
                 InventoryWindow = inventoryWindowPrefab,
                 ConfirmDialog = confirmDialogPrefab,
+                ShopWindow = shopWindowPrefab,
+                TaskBoardWindow = taskBoardWindowPrefab,
+                CraftWindow = craftWindowPrefab,
             });
 
             // Window prefabs (lazy-resolved by WindowService on first open).
             builder.RegisterInstance(new WindowPrefab<InventoryWindow>(inventoryWindowPrefab));
             builder.RegisterInstance(new WindowPrefab<ConfirmDialog>(confirmDialogPrefab));
+            builder.RegisterInstance(new WindowPrefab<Presentation.Shop.ShopWindow>(shopWindowPrefab));
+            builder.RegisterInstance(new WindowPrefab<Presentation.Village.TaskBoardWindow>(taskBoardWindowPrefab));
+            builder.RegisterInstance(new WindowPrefab<Presentation.AuntieHouse.CraftWindow>(craftWindowPrefab));
 
             // WindowService resolves further services lazily from the ROOT
             // scope (first window open happens after the container is built).
@@ -119,6 +135,12 @@ namespace ProjectF.Infrastructure
             // Presenters that live at app scope (windows + loading + chain UI).
             builder.Register<InventoryPresenter>(Lifetime.Singleton);
             builder.Register<ChainSyncPresenter>(Lifetime.Singleton);
+
+            // Stage 10 presenters: app-lifetime (windows are pooled under the
+            // persistent UIRoot; the presenters outlive gameplay scenes).
+            builder.Register<Presentation.Shop.ShopPresenter>(Lifetime.Singleton);
+            builder.Register<Presentation.Village.TaskBoardPresenter>(Lifetime.Singleton);
+            builder.Register<Presentation.AuntieHouse.KitchenPresenter>(Lifetime.Singleton);
 
             // NOTE: HudPresenter is registered per SCENE (it needs that scene's
             // HudView instance) — see each XxxLifetimeScope.Configure.

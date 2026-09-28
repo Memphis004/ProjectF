@@ -74,6 +74,8 @@ namespace ProjectF.Editor
                 PlayerView playerView = go.AddComponent<PlayerView>();
                 go.AddComponent<PlayerInputController>();
                 go.AddComponent<PresenceBroadcaster>();
+                // Stage 10: [E] interaction — nearest interactable wins.
+                go.AddComponent<Infrastructure.Interaction.InteractionDetector>();
 
                 // PlayerView [SerializeField] wiring (exact names).
                 var viewSo = new SerializedObject(playerView);

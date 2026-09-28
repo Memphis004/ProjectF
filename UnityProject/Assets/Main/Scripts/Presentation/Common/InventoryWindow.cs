@@ -63,6 +63,8 @@ namespace ProjectF.Presentation.Common
     /// confirmed inventory (StateWatcher) joined with TbItem (spec 9.4),
     /// filter tabs by category, tooltip with name/description/base price.
     /// Opened with the I key (UiInputDriver) through IWindowService.
+    /// Stage 10: food items get an EAT affordance in the tooltip — submits
+    /// EatFoodAction through the ActionQueue, refusing when stamina is full.
     /// </summary>
     public sealed class InventoryPresenter : IDisposable
     {
@@ -70,21 +72,28 @@ namespace ProjectF.Presentation.Common
         private readonly UnityTableService tables;
         private readonly LocalizationService loc;
         private readonly SpriteRegistry sprites;
+        private readonly ActionQueue actions;
+        private readonly IToastService toasts;
 
         private InventoryWindow? view;
         private StateWatcher? boundWatcher;
         private ItemCategory? filter;
+        private bool isEating;
 
         public InventoryPresenter(
             StateWatcher stateWatcher,
             UnityTableService tables,
             LocalizationService loc,
-            SpriteRegistry sprites)
+            SpriteRegistry sprites,
+            ActionQueue actionQueue,
+            IToastService toastService)
         {
             this.state = stateWatcher;
             this.tables = tables;
             this.loc = loc;
             this.sprites = sprites;
+            actions = actionQueue;
+            toasts = toastService;
         }
 
         /// <summary>Called by WindowService right before OnOpenAsync of the
@@ -194,6 +203,65 @@ namespace ProjectF.Presentation.Common
             view.TooltipBody.text =
                 $"{loc.Get("UI_TOOLTIP_PRICE").Replace("{0}", item.BasePrice.ToString())}\n" +
                 loc.Get("UI_TOOLTIP_COUNT").Replace("{0}", count.ToString());
+
+            // Stage 10: Eat affordance on food items (EatFoodAction). Refused
+            // client-side when stamina is already full (the chain accepts it
+            // but the restore would be wasted — spec: "refusing when stamina
+            // is already full").
+            Button? eat = view.TooltipPanel.GetComponentInChildren<Button>(true);
+            if (eat is null)
+            {
+                return;
+            }
+
+            if (item.Category == ItemCategory.Food)
+            {
+                eat.gameObject.SetActive(true);
+                eat.onClick.RemoveAllListeners();
+                eat.onClick.AddListener(() => EatAsync(itemId).Forget());
+                eat.interactable = !isEating
+                    && (state.Current?.Stamina ?? 0) < (state.Current?.MaxStamina ?? 0);
+            }
+            else
+            {
+                eat.gameObject.SetActive(false);
+            }
+        }
+
+        private async UniTaskVoid EatAsync(int foodItemId)
+        {
+            if (isEating)
+            {
+                return;
+            }
+
+            isEating = true;
+            try
+            {
+                IDisposable pending = toasts.ShowPending(loc.Get("TOAST_ACTION_PENDING"));
+                bool ok;
+                try
+                {
+                    ok = await actions.SubmitAsync(new ProjectF.Lib.Actions.EatFoodAction(foodItemId));
+                }
+                finally
+                {
+                    pending.Dispose();
+                }
+
+                if (ok)
+                {
+                    toasts.Success(loc.Get("EAT_DONE"));
+                }
+                else
+                {
+                    toasts.Error(loc.Get("ERR_UNKNOWN"));
+                }
+            }
+            finally
+            {
+                isEating = false;
+            }
         }
 
         private void EnsureTabs()

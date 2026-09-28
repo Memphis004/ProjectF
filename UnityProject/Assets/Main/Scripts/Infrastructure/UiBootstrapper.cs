@@ -53,12 +53,23 @@ namespace ProjectF.Infrastructure
                 Debug.LogWarning($"[ui] localization load failed — keys will show raw. {ex.Message}");
             }
 
-            // 2. UiInputDriver (MonoBehaviour on the UIRoot prefab).
+            // 2. UiInputDriver + Stage 10 InteractionPromptDriver (MonoBehaviours
+            //    on the UIRoot prefab).
             if (scope.Root is { })
             {
                 var driver = scope.Root.GetComponent<UiInputDriver>()
                     ?? scope.Root.gameObject.AddComponent<UiInputDriver>();
                 driver.Configure(windows, inputGate);
+
+                // Only the prefab instance carries a wired view — never add a
+                // bare driver to the Root GO (its Update would NRE on the
+                // missing view reference).
+                var promptDriver =
+                    scope.Root.GetComponentInChildren<Interaction.InteractionPromptDriver>(true);
+                if (promptDriver is { })
+                {
+                    promptDriver.Configure(windows, localization);
+                }
             }
 
             // 3. Loading overlay during initial chain sync.

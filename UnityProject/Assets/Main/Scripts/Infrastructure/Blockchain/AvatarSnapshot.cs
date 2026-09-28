@@ -38,6 +38,15 @@ namespace ProjectF.Infrastructure.Blockchain
         public IReadOnlyDictionary<int, long> Inventory { get; init; }
             = new Dictionary<int, long>();
 
+        /// <summary>Stage 10: confirmed taskboard — taskId → completed flag
+        /// (empty when the board was never created, e.g. pre create_avatar).</summary>
+        public IReadOnlyDictionary<int, bool> Tasks { get; init; }
+            = new Dictionary<int, bool>();
+
+        /// <summary>Stage 10: block index of the last taskboard reroll (the
+        /// reroll countdown is blockIndex - this against RerollPeriodBlocks).</summary>
+        public long TasksLastRerolledAt { get; init; }
+
         public long GetItemCount(int itemId) =>
             Inventory.TryGetValue(itemId, out long count) ? count : 0L;
 
@@ -50,7 +59,9 @@ namespace ProjectF.Infrastructure.Blockchain
             int fishingLevel, long fishingExp,
             int cookingLevel, long cookingExp,
             bool kitchenUnlocked,
-            IEnumerable<KeyValuePair<int, long>> inventory)
+            IEnumerable<KeyValuePair<int, long>> inventory,
+            IReadOnlyDictionary<int, bool>? tasks = null,
+            long tasksLastRerolledAt = 0)
         {
             return new AvatarSnapshot
             {
@@ -65,6 +76,10 @@ namespace ProjectF.Infrastructure.Blockchain
                 CookingExp = cookingExp,
                 KitchenUnlocked = kitchenUnlocked,
                 Inventory = inventory.ToDictionary(kv => kv.Key, kv => kv.Value),
+                Tasks = tasks is null
+                    ? new Dictionary<int, bool>()
+                    : new Dictionary<int, bool>(tasks),
+                TasksLastRerolledAt = tasksLastRerolledAt,
             };
         }
     }

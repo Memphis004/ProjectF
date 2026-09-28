@@ -10,7 +10,10 @@ using VContainer.Unity;
 namespace ProjectF.Presentation.Shop
 {
     /// <summary>Scene 2 container. Same pattern as VillageLifetimeScope —
-    /// see UnityProject/SETUP.md for the scene-side wiring.</summary>
+    /// see UnityProject/SETUP.md for the scene-side wiring. Stage 10: the
+    /// shop window/presenter live at APP scope (ShopWindow.cs, registered on
+    /// RootLifetimeScope — the pooled window outlives scenes); this scene
+    /// opens it through the [E] interaction on the shopkeeper NPC.</summary>
     public sealed class ShopLifetimeScope : LifetimeScope
     {
         [SerializeField]
@@ -33,7 +36,7 @@ namespace ProjectF.Presentation.Shop
             builder.RegisterInstance(spawnPoint);
 
             builder.Register<HudPresenter>(Lifetime.Singleton);
-            builder.Register<ShopPresenter>(Lifetime.Singleton);
+            builder.Register<ShopScenePresenter>(Lifetime.Singleton);
             builder.RegisterEntryPoint<ShopSceneStartup>();
         }
     }
@@ -41,13 +44,13 @@ namespace ProjectF.Presentation.Shop
     public sealed class ShopSceneStartup : IInitializable, IDisposable
     {
         private readonly ScenePlayerService player;
-        private readonly ShopPresenter presenter;
+        private readonly ShopScenePresenter presenter;
         private readonly RemotePlayerFactory remoteFactory;
         private readonly RemotePlayerRegistry remoteRegistry;
 
         public ShopSceneStartup(
             ScenePlayerService player,
-            ShopPresenter presenter,
+            ShopScenePresenter presenter,
             RemotePlayerFactory remoteFactory,
             RemotePlayerRegistry remoteRegistry)
         {
@@ -75,9 +78,10 @@ namespace ProjectF.Presentation.Shop
         public void Dispose() => remoteFactory.Unbind();
     }
 
-    /// <summary>Shop scene: HUD + exits + buy window placeholder (Stage 10
-    /// wires TbShop rows + BuyItemAction through ActionQueue).</summary>
-    public sealed class ShopPresenter
+    /// <summary>Scene-scene glue: HUD binding + player spawn. The Stage 10
+    /// shop economy (TbShop ⋈ TbItem, BuyItemAction/SellItemAction) runs in
+    /// the app-scope ShopPresenter.</summary>
+    public sealed class ShopScenePresenter
     {
         public RemotePlayerView RemotePlayerPrefab { get; }
         public PlayerView PlayerPrefab { get; }
@@ -89,7 +93,7 @@ namespace ProjectF.Presentation.Shop
         public PlayerInputGate InputGate { get; }
         public HudView HudView { get; }
 
-        public ShopPresenter(
+        public ShopScenePresenter(
             HudView hudView, HudPresenter hudPresenter, StateWatcher stateWatcher,
             PlayerInputGate inputGate,
             RemotePlayerView remotePlayerPrefab, PlayerView playerPrefab, Transform spawnPoint)
@@ -107,8 +111,6 @@ namespace ProjectF.Presentation.Shop
         {
             hud.Bind(stateWatcher);
             hud.SetSceneName("Shop");
-            // Stage 10: ShopPresenter + ShopWindow (TbShop joined with TbItem,
-            // BuyItemAction via ActionQueue with pending toast + error mapping).
         }
     }
 }

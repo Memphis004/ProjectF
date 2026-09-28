@@ -211,10 +211,29 @@ namespace ProjectF.Infrastructure.UI
 
             // Presenter attach hook: the pooled window is NOT constructor
             // injected, so its presenter binds here on first acquisition.
+            // (Stage 10 added Shop/TaskBoard/Craft — same pattern.)
             if (window is InventoryWindow inventoryWindow)
             {
                 var inv = (InventoryPresenter)Resolver.Resolve(typeof(InventoryPresenter));
                 inv.Attach(inventoryWindow);
+            }
+            else if (window is Presentation.Shop.ShopWindow shopWindow)
+            {
+                var shop = (Presentation.Shop.ShopPresenter)Resolver.Resolve(
+                    typeof(Presentation.Shop.ShopPresenter));
+                shop.Attach(shopWindow);
+            }
+            else if (window is Presentation.Village.TaskBoardWindow taskBoardWindow)
+            {
+                var board = (Presentation.Village.TaskBoardPresenter)Resolver.Resolve(
+                    typeof(Presentation.Village.TaskBoardPresenter));
+                board.Attach(taskBoardWindow);
+            }
+            else if (window is Presentation.AuntieHouse.CraftWindow craftWindow)
+            {
+                var kitchen = (Presentation.AuntieHouse.KitchenPresenter)Resolver.Resolve(
+                    typeof(Presentation.AuntieHouse.KitchenPresenter));
+                kitchen.Attach(craftWindow);
             }
 
             pool[typeof(TWindow)] = window;

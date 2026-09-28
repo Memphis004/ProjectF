@@ -79,6 +79,16 @@ namespace ProjectF.Editor
                 "UI_TAB_SEED", "UI_TAB_CROP", "UI_TAB_MATERIAL", "UI_TAB_FOOD",
                 "UI_TOOLTIP_PRICE", "UI_TOOLTIP_COUNT", "UI_EMPTY_INVENTORY",
                 "TOAST_CHAIN_OFFLINE", "TOAST_PRESENCE_OFFLINE", "TOAST_ACTION_PENDING",
+                // Stage 10 interaction + error mapping + shop/task/kitchen chrome.
+                "ERR_NOT_ENOUGH_STAMINA", "ERR_NOT_ENOUGH_GOLD", "ERR_ITEM_NOT_FOUND",
+                "ERR_POND_FULL", "ERR_PERMISSION_DENIED", "ERR_STATE_CORRUPT",
+                "ERR_TIMEOUT", "ERR_CANCELLED", "ERR_UNKNOWN",
+                "UI_INTERACT_KEY", "SHOP_PROMPT", "TASK_PROMPT", "KITCHEN_PROMPT",
+                "SHOP_BUY", "SHOP_SELL", "SHOP_TOTAL", "SHOP_LOCK", "SHOP_BOUGHT", "SHOP_SOLD",
+                "TASK_DELIVER", "TASK_DONE", "TASK_REWARD", "TASK_SUBMIT", "TASK_REROLL",
+                "TASK_REWARD_TITLE", "TASK_REWARD_GOLD", "TASK_REWARD_EXP",
+                "KITCHEN_LOCKED", "KITCHEN_PICK_RECIPE", "KITCHEN_DETAIL", "KITCHEN_CRAFT",
+                "KITCHEN_RESULT_NORMAL", "KITCHEN_RESULT_GREAT", "EAT_DONE",
             });
 
             // Items (from data/item.csv — the Luban source of truth).
@@ -138,10 +148,13 @@ namespace ProjectF.Editor
             CreateToast();
             CreateInventoryWindow(registry);
             CreateConfirmDialog(registry);
+            CreateShopWindow(registry);
+            CreateTaskBoardWindow(registry);
+            CreateCraftWindow(registry);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("[ui-prefabs] UIRoot, Toast, InventoryWindow, ConfirmDialog + SpriteRegistry generated.");
+            Debug.Log("[ui-prefabs] UIRoot, Toast, InventoryWindow, ConfirmDialog, ShopWindow, TaskBoardWindow, CraftWindow + SpriteRegistry generated.");
         }
 
         public static string PrefabPath(string name) => $"{Root}/{name}.prefab";
@@ -278,13 +291,40 @@ namespace ProjectF.Editor
                 so.ApplyModifiedPropertiesWithoutUndo();
                 overlayGo.AddComponent<Presentation.Common.LoadingOverlayBinder>();
 
-                // --- sprite source + input driver ---
+                // --- sprite source + input driver + interaction prompt ---
                 var source = root.AddComponent<SpriteRegistrySource>();
                 var soSrc = new SerializedObject(source);
                 soSrc.FindProperty("whiteSquare")!.objectReferenceValue =
                     AssetDatabase.LoadAssetAtPath<Sprite>(EditorPaths.UiRoot + "/WhiteSquare.png");
                 soSrc.ApplyModifiedPropertiesWithoutUndo();
                 root.AddComponent<Presentation.Common.UiInputDriver>();
+
+                // Stage 10: interaction prompt (one shared label, World layer,
+                // driven by InteractionPromptDriver next to UiInputDriver).
+                GameObject promptGo = new("InteractionPrompt");
+                promptGo.transform.SetParent(layerMap["World"], false);
+                var promptRect = promptGo.AddComponent<RectTransform>();
+                promptRect.sizeDelta = new Vector2(120f, 12f);
+                var promptImage = promptGo.AddComponent<Image>();
+                promptImage.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(
+                    EditorPaths.UiRoot + "/WhiteSquare.png");
+                promptImage.color = new Color(0f, 0f, 0f, 0.75f);
+                Text promptText = AddText(promptGo, "Label", Vector2.zero,
+                    new Vector2(116f, 10f), TextAnchor.MiddleCenter, 8);
+                promptText.text = "[E] Talk";
+                promptGo.AddComponent<Infrastructure.Interaction.InteractionPromptView>();
+                var promptSo = new SerializedObject(
+                    promptGo.GetComponent<Infrastructure.Interaction.InteractionPromptView>());
+                promptSo.FindProperty("root")!.objectReferenceValue = promptRect;
+                promptSo.FindProperty("label")!.objectReferenceValue = promptText;
+                promptSo.ApplyModifiedPropertiesWithoutUndo();
+                promptGo.AddComponent<Infrastructure.Interaction.InteractionPromptDriver>();
+                var driverSo = new SerializedObject(
+                    promptGo.GetComponent<Infrastructure.Interaction.InteractionPromptDriver>());
+                driverSo.FindProperty("view")!.objectReferenceValue =
+                    promptGo.GetComponent<Infrastructure.Interaction.InteractionPromptView>();
+                driverSo.ApplyModifiedPropertiesWithoutUndo();
+                promptGo.SetActive(false); // shown on demand by the driver
 
                 SavePrefab(root, "UIRoot");
             }
@@ -505,6 +545,23 @@ namespace ProjectF.Editor
                     new Vector2(220f, 10f), TextAnchor.UpperLeft, 8);
                 tooltipBody.text = "description";
 
+                // Stage 10: EAT affordance (enabled for Food items only).
+                GameObject eatGo = new("EatButton");
+                eatGo.transform.SetParent(tooltipGo.transform, false);
+                var eatRect = eatGo.AddComponent<RectTransform>();
+                eatRect.anchorMin = new Vector2(1f, 0.5f);
+                eatRect.anchorMax = new Vector2(1f, 0.5f);
+                eatRect.pivot = new Vector2(1f, 0.5f);
+                eatRect.anchoredPosition = new Vector2(-4f, 0f);
+                eatRect.sizeDelta = new Vector2(30f, 12f);
+                var eatImage = eatGo.AddComponent<Image>();
+                eatImage.sprite = registry.WhiteSquareSprite;
+                eatImage.color = new Color(0.30f, 0.55f, 0.30f);
+                eatGo.AddComponent<Button>();
+                Text eatLabel = AddText(eatGo, "Label", Vector2.zero,
+                    new Vector2(30f, 12f), TextAnchor.MiddleCenter, 8);
+                eatLabel.text = "Eat";
+
                 var view = root.AddComponent<Presentation.Common.InventoryWindow>();
                 var so = new SerializedObject(view);
                 so.FindProperty("tabRow")!.objectReferenceValue = tabRowRect;
@@ -578,6 +635,304 @@ namespace ProjectF.Editor
             {
                 Object.DestroyImmediate(root);
             }
+        }
+
+        // ------------------------------------------------------------------
+        // Stage 10 windows — Shop / TaskBoard / Craft (same recipe as
+        // InventoryWindow: panel + title + row template + footer controls)
+        // ------------------------------------------------------------------
+
+        private static void CreateShopWindow(SpriteRegistryAsset registry)
+        {
+            GameObject root = new("ShopWindow");
+            try
+            {
+                var rect = root.AddComponent<RectTransform>();
+                rect.sizeDelta = new Vector2(260f, 150f);
+
+                var backdrop = root.AddComponent<Image>();
+                backdrop.sprite = registry.PanelSprite;
+                backdrop.type = Image.Type.Sliced;
+                backdrop.color = new Color(0.13f, 0.11f, 0.09f, 0.96f);
+
+                Text title = AddText(root, "Title", new Vector2(0f, 66f),
+                    new Vector2(240f, 14f), TextAnchor.MiddleCenter, 11);
+                title.text = "Shop";
+                title.color = new Color(0.95f, 0.9f, 0.8f);
+
+                AddWindowTabs(root, out RectTransform buyTab, out RectTransform sellTab);
+                AddRowList(root, registry, RowKind.Shop, out RectTransform rowTemplate, out RectTransform rowList);
+
+                // Footer: stepper + total + action button.
+                Button minus = AddButton(root, "MinusButton", new Vector2(-100f, -58f),
+                    registry, new Color(0.35f, 0.3f, 0.24f));
+                minus.GetComponentInChildren<Text>().text = "-";
+                Text qty = AddText(root, "Quantity", new Vector2(-70f, -58f),
+                    new Vector2(30f, 14f), TextAnchor.MiddleCenter, 10);
+                qty.text = "x1";
+                Button plus = AddButton(root, "PlusButton", new Vector2(-40f, -58f),
+                    registry, new Color(0.35f, 0.3f, 0.24f));
+                plus.GetComponentInChildren<Text>().text = "+";
+                Text total = AddText(root, "Total", new Vector2(40f, -58f),
+                    new Vector2(90f, 14f), TextAnchor.MiddleLeft, 9);
+                total.text = "Total: 0";
+                Button action = AddButton(root, "ActionButton", new Vector2(100f, -58f),
+                    registry, new Color(0.30f, 0.55f, 0.30f));
+                action.GetComponentInChildren<Text>().text = "Buy";
+
+                var view = root.AddComponent<Presentation.Shop.ShopWindow>();
+                var so = new SerializedObject(view);
+                so.FindProperty("buyTabButton")!.objectReferenceValue = buyTab;
+                so.FindProperty("sellTabButton")!.objectReferenceValue = sellTab;
+                so.FindProperty("rowTemplate")!.objectReferenceValue = rowTemplate;
+                so.FindProperty("rowList")!.objectReferenceValue = rowList;
+                so.FindProperty("totalLabel")!.objectReferenceValue = total;
+                so.FindProperty("quantityLabel")!.objectReferenceValue = qty;
+                so.FindProperty("minusButton")!.objectReferenceValue = minus;
+                so.FindProperty("plusButton")!.objectReferenceValue = plus;
+                so.FindProperty("actionButton")!.objectReferenceValue = action;
+                so.FindProperty("actionLabel")!.objectReferenceValue =
+                    action.GetComponentInChildren<Text>();
+                so.ApplyModifiedPropertiesWithoutUndo();
+
+                SavePrefab(root, "ShopWindow");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        private static void CreateTaskBoardWindow(SpriteRegistryAsset registry)
+        {
+            GameObject root = new("TaskBoardWindow");
+            try
+            {
+                var rect = root.AddComponent<RectTransform>();
+                rect.sizeDelta = new Vector2(260f, 150f);
+
+                var backdrop = root.AddComponent<Image>();
+                backdrop.sprite = registry.PanelSprite;
+                backdrop.type = Image.Type.Sliced;
+                backdrop.color = new Color(0.13f, 0.11f, 0.09f, 0.96f);
+
+                Text title = AddText(root, "Title", new Vector2(0f, 66f),
+                    new Vector2(240f, 14f), TextAnchor.MiddleCenter, 11);
+                title.text = "Task Board";
+                title.color = new Color(0.95f, 0.9f, 0.8f);
+
+                AddRowList(root, registry, RowKind.Task, out RectTransform rowTemplate, out RectTransform rowList);
+
+                Text countdown = AddText(root, "Countdown", new Vector2(0f, -58f),
+                    new Vector2(240f, 14f), TextAnchor.MiddleCenter, 9);
+                countdown.text = "reroll in 600 blocks (~20 min)";
+
+                var view = root.AddComponent<Presentation.Village.TaskBoardWindow>();
+                var so = new SerializedObject(view);
+                so.FindProperty("rowTemplate")!.objectReferenceValue = rowTemplate;
+                so.FindProperty("rowList")!.objectReferenceValue = rowList;
+                so.FindProperty("countdownLabel")!.objectReferenceValue = countdown;
+                so.ApplyModifiedPropertiesWithoutUndo();
+
+                SavePrefab(root, "TaskBoardWindow");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        private static void CreateCraftWindow(SpriteRegistryAsset registry)
+        {
+            GameObject root = new("CraftWindow");
+            try
+            {
+                var rect = root.AddComponent<RectTransform>();
+                rect.sizeDelta = new Vector2(260f, 150f);
+
+                var backdrop = root.AddComponent<Image>();
+                backdrop.sprite = registry.PanelSprite;
+                backdrop.type = Image.Type.Sliced;
+                backdrop.color = new Color(0.13f, 0.11f, 0.09f, 0.96f);
+
+                Text title = AddText(root, "Title", new Vector2(0f, 66f),
+                    new Vector2(240f, 14f), TextAnchor.MiddleCenter, 11);
+                title.text = "Kitchen";
+                title.color = new Color(0.95f, 0.9f, 0.8f);
+
+                AddRowList(root, registry, RowKind.Craft, out RectTransform rowTemplate, out RectTransform rowList);
+
+                Text detail = AddText(root, "Detail", new Vector2(-40f, -58f),
+                    new Vector2(150f, 14f), TextAnchor.MiddleLeft, 8);
+                detail.text = "stamina 0 · great 5%";
+
+                Button minus = AddButton(root, "MinusButton", new Vector2(-100f, -58f),
+                    registry, new Color(0.35f, 0.3f, 0.24f));
+                minus.GetComponentInChildren<Text>().text = "-";
+                Text qty = AddText(root, "Portions", new Vector2(-70f, -58f),
+                    new Vector2(30f, 14f), TextAnchor.MiddleCenter, 10);
+                qty.text = "x1";
+                Button plus = AddButton(root, "PlusButton", new Vector2(-40f, -58f),
+                    registry, new Color(0.35f, 0.3f, 0.24f));
+                plus.GetComponentInChildren<Text>().text = "+";
+                Button craft = AddButton(root, "CraftButton", new Vector2(100f, -58f),
+                    registry, new Color(0.30f, 0.55f, 0.30f));
+                craft.GetComponentInChildren<Text>().text = "Cook";
+
+                // Locked overlay: covers everything, shows "Talk to Auntie first".
+                GameObject locked = new("LockedOverlay");
+                locked.transform.SetParent(root.transform, false);
+                var lockedRect = locked.AddComponent<RectTransform>();
+                lockedRect.anchorMin = Vector2.zero;
+                lockedRect.anchorMax = Vector2.one;
+                lockedRect.offsetMin = Vector2.zero;
+                lockedRect.offsetMax = Vector2.zero;
+                var lockedImage = locked.AddComponent<Image>();
+                lockedImage.sprite = registry.WhiteSquareSprite;
+                lockedImage.color = new Color(0f, 0f, 0f, 0.72f);
+                Text lockedText = AddText(locked, "Text", Vector2.zero,
+                    new Vector2(240f, 30f), TextAnchor.MiddleCenter, 10);
+                lockedText.text = "Locked";
+                locked.SetActive(false);
+
+                var view = root.AddComponent<Presentation.AuntieHouse.CraftWindow>();
+                var so = new SerializedObject(view);
+                so.FindProperty("rowTemplate")!.objectReferenceValue = rowTemplate;
+                so.FindProperty("rowList")!.objectReferenceValue = rowList;
+                so.FindProperty("detailLabel")!.objectReferenceValue = detail;
+                so.FindProperty("portionsLabel")!.objectReferenceValue = qty;
+                so.FindProperty("minusButton")!.objectReferenceValue = minus;
+                so.FindProperty("plusButton")!.objectReferenceValue = plus;
+                so.FindProperty("craftButton")!.objectReferenceValue = craft;
+                so.FindProperty("craftLabel")!.objectReferenceValue =
+                    craft.GetComponentInChildren<Text>();
+                so.FindProperty("lockedOverlay")!.objectReferenceValue = locked;
+                so.ApplyModifiedPropertiesWithoutUndo();
+
+                SavePrefab(root, "CraftWindow");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        /// <summary>Shared Buy/Sell tab pair (ShopWindow).</summary>
+        private static void AddWindowTabs(
+            GameObject root, out RectTransform buyTab, out RectTransform sellTab)
+        {
+            buyTab = AddTabButton(root, "BuyTab", new Vector2(-60f, 48f), "Buy");
+            sellTab = AddTabButton(root, "SellTab", new Vector2(-20f, 48f), "Sell");
+        }
+
+        private static RectTransform AddTabButton(
+            GameObject parent, string name, Vector2 position, string label)
+        {
+            GameObject go = new(name);
+            go.transform.SetParent(parent.transform, false);
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = new Vector2(38f, 13f);
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.35f, 0.3f, 0.24f);
+            go.AddComponent<Button>();
+            AddText(go, "Label", Vector2.zero, new Vector2(38f, 12f),
+                TextAnchor.MiddleCenter, 8).text = label;
+            return rect;
+        }
+
+        /// <summary>Which children a row template carries.</summary>
+        private enum RowKind { Shop, Task, Craft }
+
+        /// <summary>Shared row list: inactive template child + layout list.
+        /// Children differ per window kind — Shop: Icon/Name/Stock/Price/Lock;
+        /// Task: Title/Progress/Reward/Submit; Craft: Title/Materials.</summary>
+        private static void AddRowList(
+            GameObject root, SpriteRegistryAsset registry, RowKind kind,
+            out RectTransform rowTemplate, out RectTransform rowList)
+        {
+            GameObject listGo = new("RowList");
+            listGo.transform.SetParent(root.transform, false);
+            var listRect = listGo.AddComponent<RectTransform>();
+            listRect.anchorMin = new Vector2(0.5f, 0.5f);
+            listRect.anchorMax = new Vector2(0.5f, 0.5f);
+            listRect.anchoredPosition = new Vector2(0f, 4f);
+            listRect.sizeDelta = new Vector2(240f, 88f);
+            var layout = listGo.AddComponent<VerticalLayoutGroup>();
+            layout.spacing = 2f;
+            layout.childControlWidth = false;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            GameObject template = new("RowTemplate");
+            template.transform.SetParent(listGo.transform, false);
+            var templateRect = template.AddComponent<RectTransform>();
+            templateRect.sizeDelta = new Vector2(238f, 20f);
+            var templateImage = template.AddComponent<Image>();
+            templateImage.color = new Color(0.22f, 0.2f, 0.18f);
+            template.AddComponent<Button>();
+
+            if (kind == RowKind.Shop)
+            {
+                GameObject iconGo = new("Icon");
+                iconGo.transform.SetParent(template.transform, false);
+                var iconRect = iconGo.AddComponent<RectTransform>();
+                iconRect.anchorMin = new Vector2(0f, 0.5f);
+                iconRect.anchorMax = new Vector2(0f, 0.5f);
+                iconRect.pivot = new Vector2(0f, 0.5f);
+                iconRect.anchoredPosition = new Vector2(2f, 0f);
+                iconRect.sizeDelta = new Vector2(14f, 14f);
+                iconGo.AddComponent<Image>();
+
+                Text name = AddText(template, "Name", new Vector2(10f, 0f),
+                    new Vector2(104f, 16f), TextAnchor.MiddleLeft, 8);
+                name.text = "Item";
+                Text stock = AddText(template, "Stock", new Vector2(118f, 0f),
+                    new Vector2(28f, 16f), TextAnchor.MiddleLeft, 8);
+                stock.text = "∞";
+                Text price = AddText(template, "Price", new Vector2(150f, 0f),
+                    new Vector2(30f, 16f), TextAnchor.MiddleRight, 8);
+                price.text = "0";
+                Text lockLabel = AddText(template, "Lock", new Vector2(184f, 0f),
+                    new Vector2(50f, 16f), TextAnchor.MiddleRight, 8);
+                lockLabel.text = "L3";
+                lockLabel.color = new Color(0.95f, 0.7f, 0.25f);
+            }
+            else if (kind == RowKind.Task)
+            {
+                Text taskTitle = AddText(template, "Title", new Vector2(4f, 2f),
+                    new Vector2(150f, 12f), TextAnchor.MiddleLeft, 8);
+                taskTitle.text = "Task";
+                Text progress = AddText(template, "Progress", new Vector2(160f, 2f),
+                    new Vector2(40f, 12f), TextAnchor.MiddleRight, 8);
+                progress.text = "0/3";
+                Text reward = AddText(template, "Reward", new Vector2(4f, -6f),
+                    new Vector2(190f, 10f), TextAnchor.MiddleLeft, 7);
+                reward.text = "reward";
+                reward.color = new Color(0.7f, 0.9f, 0.55f);
+                Button submit = AddButton(template, "Submit", new Vector2(196f, 0f),
+                    registry, new Color(0.30f, 0.55f, 0.30f));
+                submit.GetComponent<RectTransform>().sizeDelta = new Vector2(36f, 12f);
+                submit.GetComponentInChildren<Text>().fontSize = 7;
+                submit.GetComponentInChildren<Text>().text = "Send";
+            }
+            else
+            {
+                Text craftTitle = AddText(template, "Title", new Vector2(4f, 2f),
+                    new Vector2(200f, 12f), TextAnchor.MiddleLeft, 8);
+                craftTitle.text = "Recipe";
+                Text materials = AddText(template, "Materials", new Vector2(4f, -6f),
+                    new Vector2(220f, 10f), TextAnchor.MiddleLeft, 7);
+                materials.text = "materials";
+                materials.color = new Color(0.75f, 0.75f, 0.75f);
+            }
+
+            template.SetActive(false);
+            rowTemplate = templateRect;
+            rowList = listRect;
         }
 
         // ------------------------------------------------------------------

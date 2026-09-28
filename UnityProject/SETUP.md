@@ -59,7 +59,7 @@ above)** (or run the batch command above). This produces, in dependency order:
 | Generate Placeholder Sprites | `Assets/Main/Art/Placeholder/` — tiles, 16×32 player sheet (4 dirs × 4 frames), 32×32 9-slice panel, one 16×16 icon per Luban item id (colours keyed by category). Point filter, no compression, PPU 16. |
 | Generate Settings Assets | `Assets/Main/Settings/NetworkSettings.asset` with defaults; "Allow downloads over HTTP" = Always allowed. Existing settings are **never** overwritten unless **Force Regenerate** is ticked. |
 | Generate Prefabs | `Assets/Main/Prefabs/` — Player (kinematic RB2D), RemotePlayer + name tag, SceneTransitionTrigger, FishingSpot (pondId 1), FarmTile, NpcShopkeeper, NpcAuntie, TaskBoard, **Hud (bare tree: bars, exp, dots — re-parented under UIRoot at runtime)**, FishingWindow, PlayerController. |
-| Generate UI Prefabs (Stage 9) | `Assets/Main/Prefabs/UI/` — UIRoot (Screen Space - Camera 320×180 canvas, five layers World/HUD/Window/Modal/Toast with sorting 0/10/20/30/40, LoadingOverlay + binder, UiInputDriver), Toast row, InventoryWindow (tabs/grid/tooltip), ConfirmDialog (modal). Also bakes `Assets/Main/Settings/SpriteRegistry.asset` (white square, 9-slice panel, one icon per item id). |
+| Generate UI Prefabs (Stage 9/10) | `Assets/Main/Prefabs/UI/` — UIRoot (Screen Space - Camera 320×180 canvas, five layers World/HUD/Window/Modal/Toast with sorting 0/10/20/30/40, LoadingOverlay + binder, UiInputDriver, **Stage 10 interaction prompt "[E] …"**), Toast row, InventoryWindow (tabs/grid/tooltip + **Eat button on food**), ConfirmDialog (modal), **ShopWindow (Buy/Sell tabs + stepper), TaskBoardWindow (task rows + reroll countdown), CraftWindow (recipes + portions + locked overlay)**. Also bakes `Assets/Main/Settings/SpriteRegistry.asset` (white square, 9-slice panel, one icon per item id). |
 | Generate Scenes | `Assets/Main/Scenes/` — Persistent (index 0: Pixel Perfect Camera PPU 16 / 320×180 / upscale RT off, EventSystem, **UIRoot instance wired to the camera**, RootLifetimeScope + settings + UI prefabs + sprite registry) + Village / Shop / AuntieHouse / FarmPlot, all wired and added to build settings in order. |
 | Validate Project | Static checks: build-settings order, exactly one LifetimeScope per scene, every scope reference assigned, one icon per item id. |
 
@@ -96,6 +96,20 @@ don't change `NodePort` or remove `{instanceId}` (two-instance gotcha below).
    TbItem), `Escape` closes the top window, a modal (ConfirmDialog) dims and
    blocks the world below it. Toasts: `IToastService.Info/Success/Warning/
    Error` (3s, errors 6s) and `ShowPending(...)` for the confirming spinner.
+6. Stage 10 gameplay smoke: walk to a target and the shared "[E] …" prompt
+   appears above it (nearest interactable wins). **[E] on the shopkeeper** →
+   ShopWindow: Buy tab lists TbShop ⋈ TbItem (price, daily stock, level lock),
+   −/+ stepper with a running total, Buy disabled when gold is short; Sell tab
+   lists Fish/Crop/Food at the 60% rate (`sell_item_v1`). **[E] on the task
+   board** → TaskBoardWindow: today's 3 tasks with live "2/3" progress,
+   Submit only when met, reward popup on confirm, reroll countdown in blocks
+   AND minutes. **[E] on the kitchen** → CraftWindow: material checklist,
+   portions 1-10, stamina total, great-dish chance; locked shows "Talk to
+   Auntie first" until `KitchenUnlocked`. Food tooltips gain an Eat button
+   (refused at full stamina). Action failures surface through ErrorMapper
+   (e.g. NotEnoughStamina → "หมดแรงแล้ว พักกินข้าวก่อน"). NOTE: lib actions
+   require `pwsh tools/sync-dlls.ps1` after `dotnet build` — Unity runs the
+   prebuilt `ProjectF.Lib.dll`.
 
 To run the full stack:
 

@@ -68,3 +68,37 @@ POND_NAME_VILLAGE_SMALL,บ่อปลาหมู่บ้าน
 RECIPE_NAME_GRILLED_FISH,ปลาย่าง
 RECIPE_NAME_FISH_SOUP,ซุปปลาผัก
 RECIPE_NAME_SPICY_FISH,ปลาผัดเผ็ด
+ERR_NOT_ENOUGH_STAMINA,หมดแรงแล้ว พักกินข้าวก่อน
+ERR_NOT_ENOUGH_GOLD,เงินไม่พอ
+ERR_ITEM_NOT_FOUND,ของไม่พอ ไปหามาก่อนนะ
+ERR_POND_FULL,บ่อปลาเต็มแล้ว รอคนยกเลิกก่อน
+ERR_PERMISSION_DENIED,ไม่ใช่ตัวละครของคุณ
+ERR_STATE_CORRUPT,ข้อมูลเสียหาย ลองใหม่อีกครั้ง
+ERR_TIMEOUT,เน็ตช้าเกินไป ลองใหม่อีกครั้ง
+ERR_CANCELLED,ยกเลิกแล้ว
+ERR_UNKNOWN,เกิดข้อผิดพลาด ลองใหม่อีกครั้ง
+UI_INTERACT_KEY,[E]
+SHOP_PROMPT,คุยกับร้านค้า
+TASK_PROMPT,ดูบอร์ดภารกิจ
+KITCHEN_PROMPT,ใช้ครัว
+SHOP_BUY,ซื้อ
+SHOP_SELL,ขาย
+SHOP_TOTAL,รวม
+SHOP_LOCK,Lv
+SHOP_BOUGHT,ซื้อสำเร็จ
+SHOP_SOLD,ขายสำเร็จ
+TASK_DELIVER,ส่งของ
+TASK_DONE,สำเร็จแล้ว
+TASK_REWARD,รางวัล {0}G {1}exp
+TASK_SUBMIT,ส่ง
+TASK_REROLL,สุ่มใหม่ในอีก {0} บล็อก (~{1} นาที)
+TASK_REWARD_TITLE,รับรางวัล
+TASK_REWARD_GOLD,ทอง
+TASK_REWARD_EXP,ประสบการณ์
+KITCHEN_LOCKED,ยังปลดล็อกไม่ได้ — ไปคุยกับป้าก่อน
+KITCHEN_PICK_RECIPE,เลือกสูตรอาหาร
+KITCHEN_DETAIL,แรง {0} · อร่อยพิเศษ {1}%
+KITCHEN_CRAFT,ปรุง
+KITCHEN_RESULT_NORMAL,ทำอาหารสำเร็จ
+KITCHEN_RESULT_GREAT,อาหารสุดเด็ด!
+EAT_DONE,กินแล้ว แรงฟื้นแล้ว
