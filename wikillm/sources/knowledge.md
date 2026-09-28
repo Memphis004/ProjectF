@@ -53,3 +53,22 @@ MagicOnion 7.x (presence) · Libplanet 5.x (chain) · Luban (CSV data tables) ·
 - One `LifetimeScope` per scene, `RootLifetimeScope` for app-lifetime singletons.
 - Presence sends at 10 Hz max, never per-frame; clients interpolate.
 - Comments in code: English. Commit messages: English.
+## Unity scene model
+- `Persistent.unity` loads first and is NEVER unloaded. It hosts RootLifetimeScope,
+  the main Camera, the HUD canvas, and all app-lifetime singletons.
+- Gameplay scenes (Village=1, Shop=2, AuntieHouse=3, FarmPlot=4) are loaded ADDITIVELY,
+  one at a time, and unloaded only after the replacement is live.
+- Every gameplay scene has exactly one `XxxLifetimeScope` whose parent is RootLifetimeScope.
+- Scene ids in the enum MUST match the scene_id column in data/pond.csv.
+
+## UX contract for on-chain actions
+- No user-facing action may block the UI thread waiting for a block.
+- Every action shows: immediate local feedback -> "confirming" indicator -> confirmed or rolled back.
+- If the chain is unreachable, the game stays playable in read-only mode and says so clearly.
+- If the presence hub is unreachable, the game runs in single-player visual mode and says so.
+
+## Editor-generated content
+- Scenes, prefabs and ScriptableObject assets are produced by editor scripts under
+  `Assets/Main/Editor/`, never by hand, so they can be regenerated and reviewed in git.
+- Art is placeholder: solid-colour sprites generated at runtime/import time.
+  Real pixel art is dropped in later and must not require code changes.
