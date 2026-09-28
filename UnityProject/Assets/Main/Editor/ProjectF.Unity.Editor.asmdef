@@ -2,7 +2,9 @@
     "name": "ProjectF.Unity.Editor",
     "rootNamespace": "ProjectF.Editor",
     "references": [
-        "ProjectF.Unity"
+        "ProjectF.Unity",
+        "VContainer",
+        "Unity.2D.PixelPerfect"
     ],
     "includePlatforms": [
         "Editor"

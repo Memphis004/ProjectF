@@ -22,8 +22,8 @@
       "hash": "3efebda78d62d3b484e6da2f2edb523a08d6786a"
     },
     "com.ivanmurzak.unity.mcp": {
-      "version": "0.93.1",
-      "depth": 0,
+      "version": "0.93.2",
+      "depth": 1,
       "source": "registry",
       "dependencies": {
         "com.unity.test-framework": "1.1.33",
@@ -33,24 +33,31 @@
       "url": "https://package.openupm.com"
     },
     "com.ivanmurzak.unity.mcp.animation": {
-      "version": "1.2.33",
+      "version": "1.2.34",
       "depth": 0,
       "source": "registry",
       "dependencies": {
-        "com.ivanmurzak.unity.mcp": "0.93.1",
+        "com.ivanmurzak.unity.mcp": "0.93.2",
         "com.unity.modules.animation": "1.0.0"
       },
       "url": "https://package.openupm.com"
     },
     "com.ivanmurzak.unity.mcp.inputsystem": {
-      "version": "1.0.18",
+      "version": "1.0.19",
       "depth": 0,
       "source": "registry",
       "dependencies": {
-        "com.ivanmurzak.unity.mcp": "0.93.1",
+        "com.ivanmurzak.unity.mcp": "0.93.2",
         "com.unity.inputsystem": "1.7.0"
       },
       "url": "https://package.openupm.com"
+    },
+    "com.unity.2d.pixel-perfect": {
+      "version": "2.1.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://packages.unity.com"
     },
     "com.unity.2d.tilemap": {
       "version": "1.0.0",

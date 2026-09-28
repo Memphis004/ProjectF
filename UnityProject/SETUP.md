@@ -1,12 +1,25 @@
-# Unity client setup — Stage 7 manual checklist
+# Unity client setup — Stage 8
 
-Stage 7 delivers all **code** (Infrastructure + Presentation scripts), the
-package manifest, the asmdef, and the DLL sync pipeline. Scenes, prefabs and
-ScriptableObject assets **must be created in the Unity Editor** — that work is
-not faked from the command line. Follow this checklist top-to-bottom once;
-stage 8 replaces most of it with editor automation.
+Stage 8's editor automation generates **everything** that used to be hand-made
+(placeholder art, NetworkSettings, prefabs, all 5 scenes, build settings), per
+knowledge.md "Editor-generated content". The manual checklist is down to
+**3 items**.
 
-Before starting, from the repository root:
+Generators live in `UnityProject/Assets/Main/Editor/` (asmdef
+`ProjectF.Unity.Editor`, Editor-only). GUI: Unity menu **ProjectF → Setup**.
+CLI (CI / headless):
+
+```bash
+Unity -batchmode -quit -projectPath UnityProject \
+  -executeMethod ProjectF.Editor.BatchSetup.RunFullSetup -logFile -
+```
+
+`RunFullSetup` exits non-zero if generation or validation fails;
+`ProjectF.Editor.BatchSetup.RunValidation` runs only the checks.
+
+---
+
+## Before you start (build the libraries)
 
 ```bash
 pwsh tools/gen.ps1        # CSV → C# tables + Luban binaries (needs Luban.dll)
@@ -32,139 +45,53 @@ NuGetForUnity restore has not run — open **NuGet → Manage NuGet Packages →
 **Restore** (or delete `Assets/Packages` and restore) so the four packages
 from `packages.config` land in `Assets/Packages/`.
 
-> Two-instance gotcha: every build needs its own `InstanceId` (NetworkSettings)
-> — the StorePath template contains `{instanceId}` and `NodePort` must stay 0
-> (random), or two editors fight over one chain store / port.
-
 ---
 
-## Checklist
+## Checklist (3 items)
 
-### 1. Enable HTTP/2 cleartext for the presence hub
+### 1. Generate everything
 
-The hub (MagicOnion 7) requires HTTP/2. Player settings:
+Open the Unity project, then **ProjectF → Setup → Full Setup (all of the
+above)** (or run the batch command above). This produces, in dependency order:
 
-1. Edit → Project Settings → Player → Other Settings → Configuration.
-2. Under **Allow downloads over HTTP**, set **Always allowed**
-   (local dev talks plain `http://` to 127.0.0.1:5170).
+| Step | Output |
+|---|---|
+| Generate Placeholder Sprites | `Assets/Main/Art/Placeholder/` — tiles, 16×32 player sheet (4 dirs × 4 frames), 32×32 9-slice panel, one 16×16 icon per Luban item id (colours keyed by category). Point filter, no compression, PPU 16. |
+| Generate Settings Assets | `Assets/Main/Settings/NetworkSettings.asset` with defaults; "Allow downloads over HTTP" = Always allowed. Existing settings are **never** overwritten unless **Force Regenerate** is ticked. |
+| Generate Prefabs | `Assets/Main/Prefabs/` — Player (kinematic RB2D), RemotePlayer + name tag, SceneTransitionTrigger, FishingSpot (pondId 1), FarmTile, NpcShopkeeper, NpcAuntie, TaskBoard, Hud, FishingWindow, PlayerController. |
+| Generate Scenes | `Assets/Main/Scenes/` — Persistent (index 0: Pixel Perfect Camera PPU 16 / 320×180 / upscale RT off, EventSystem, RootLifetimeScope + settings, HUD canvas root) + Village / Shop / AuntieHouse / FarmPlot, all wired and added to build settings in order. |
+| Validate Project | Static checks: build-settings order, exactly one LifetimeScope per scene, every scope reference assigned, one icon per item id. |
 
-### 2. Create the NetworkSettings asset
+### 2. Point NetworkSettings at a seed (optional for offline play)
 
-1. In the Project window, right-click `Assets/Main/Settings` →
-   Create → **ProjectF → Network Settings**. Name it `NetworkSettings`.
-   (Create the `Settings` folder if it does not exist.)
-2. Select the asset and fill in:
-   - **Seed Peers**: paste the seed's peer string, format
-     `{pubkeyHex},{host},{port}` — printed by `ProjectF.SeedNode` on boot
-     (or the first line of its `store/peer.txt`). Leave empty to run a local
-     solo chain.
-   - **Apv Token**: paste the FULL contents of the seed's `apv.txt`
-     (pre-signed AppProtocolVersion token). Different token = silent message
-     drops.
-   - **Store Path**: keep the default
-     `{persistentDataPath}/chain-{instanceId}`.
-   - **Node Port**: keep `0`.
-   - **Hub Host / Hub Port**: `127.0.0.1` / `5170`.
-   - **Instance Id**: unique per running build (`player1`, `player2`, …).
-   - **Player Name**: your display name (cosmetic layer only).
+Select `Assets/Main/Settings/NetworkSettings.asset` and fill in (values come
+from a running `ProjectF.SeedNode` — it prints the peer string and writes
+`apv.txt`):
 
-### 3. Create the Persistent scene (index 0 — never unloaded)
+- **Seed Peers**: `{pubkeyHex},{host},{port}` — leave empty to run a local
+  solo chain.
+- **Apv Token**: the FULL contents of the seed's `apv.txt` (a mismatched token
+  = silent message drops).
+- **Instance Id / Player Name**: unique per running build (`player1`,
+  `player2`, …).
 
-1. File → New Scene → **Empty Scene**, save as `Assets/Main/Scenes/Persistent.unity`.
-2. Add a **Camera** named `Main Camera` (Stage 8 adds Pixel Perfect Camera,
-   reference res 320×180, PPU 16).
-3. Add an **EventSystem** GameObject (GameObject → UI → Event System).
-4. Create an empty GameObject named `RootLifetimeScope` and add the
-   `RootLifetimeScope` component (script: Infrastructure/RootLifetimeScope.cs).
-5. Assign the `NetworkSettings` asset from step 2 into its
-   **Network Settings** field.
-6. (HUD canvas comes with Stage 9 — nothing else is required to boot.)
+Defaults for `HubHost`/`HubPort` (127.0.0.1:5170), `NodePort` (0) and
+`StorePath` (`{persistentDataPath}/chain-{instanceId}`) are already correct —
+don't change `NodePort` or remove `{instanceId}` (two-instance gotcha below).
 
-### 4. Create the four gameplay scenes
+### 3. Smoke test (offline is fine)
 
-Each scene: File → New Scene → Empty Scene, then the matching
-LifetimeScope + one child named `Spawn` (empty GameObject positioned where
-the player should appear on entry):
+1. Open `Assets/Main/Scenes/Persistent.unity`, press **Play**.
+2. Console should show, in order: `[tables] loaded …`, `[chain] bootstrap
+   done — tip #N …` (or the offline warning), `[boot] chain status: …`,
+   `[boot] Stage 7 client up.`, then Village loading additively with the
+   generated player.
+3. With no seed configured the game runs a **local solo chain**; with a seed
+   configured but down it runs read-only and the HUD chain dot goes red.
+4. Two editors + `run-two-nodes.ps1` + HubServer = presence visible: move in
+   one window, the other follows (10 Hz + interpolation).
 
-| Scene id | File                                        | Scope component            |
-|----------|---------------------------------------------|----------------------------|
-| 1        | `Assets/Main/Scenes/Village.unity`          | `VillageLifetimeScope`     |
-| 2        | `Assets/Main/Scenes/Shop.unity`             | `ShopLifetimeScope`        |
-| 3        | `Assets/Main/Scenes/AuntieHouse.unity`      | `AuntieHouseLifetimeScope` |
-| 4        | `Assets/Main/Scenes/FarmPlot.unity`         | `FarmPlotLifetimeScope`    |
-
-For each gameplay scene:
-
-1. Create an empty GameObject named `<Scene>LifetimeScope` (e.g. `VillageLifetimeScope`)
-   and add the matching scope script (Presentation/<Scene>/…).
-2. Set its **Parent Reference** (Inspector, VContainer section):
-   Type = `RootLifetimeScope` (project script), Object = the Persistent scene's
-   `RootLifetimeScope` object. Open Persistent additively while editing if the
-   picker cannot find it (right-click scene tab → Additive).
-3. Create an empty child GameObject named `Spawn` under the scope object;
-   drag it into the scope's **Spawn Point** field.
-4. Assign the prefab fields (see section 5): **Player Prefab**,
-   **Remote Player Prefab**, **Hud View** (an empty GameObject is fine — HUD
-   visuals arrive in Stage 9), and for FarmPlot also **Fishing View**.
-5. In `FarmPlot.unity`, the pond itself needs nothing manual yet — Stage 13
-   finishes the mini-game; the presenter already targets pondId 1 (see
-   `FarmPlotPresenter.VillagePondId`).
-
-Scene ids MUST match `data/pond.csv`: the village pond is scene 4 (FarmPlot).
-
-### 5. Create placeholder prefabs (until Stage 8 automates this)
-
-Minimal throwaway versions so the scopes bind — Stage 8's generators replace
-them without code changes:
-
-**Player prefab** (`Assets/Main/Prefabs/Player.prefab`):
-
-1. Empty GameObject `Player`, add components: `SpriteRenderer`
-   (any 2D sprite), `Rigidbody2D` (**Body Type: Dynamic**, **Gravity Scale 0**,
-   **Collision Detection: Continuous**), `BoxCollider2D`, `Animator`
-   (empty controller), `PlayerView`, `PlayerInputController`,
-   `PresenceBroadcaster`.
-2. Drag into `Assets/Main/Prefabs/`, delete from the scene.
-
-> The player is spawned ONCE by `ScenePlayerService` (app-lifetime) and kept
-> alive with DontDestroyOnLoad — do NOT place a Player instance in any scene.
-
-**RemotePlayer prefab** (`Assets/Main/Prefabs/RemotePlayer.prefab`):
-
-1. Empty GameObject `RemotePlayer`: `SpriteRenderer`, `RemotePlayerView`.
-2. Child GameObject `NameTag`: add `TextMesh` (character size ~0.1, anchor
-   Middle Center) + `NameTagView`; drag it into the view's **Name Tag** field.
-3. Save as prefab.
-
-### 6. Build settings
-
-File → Build Settings → Scenes In Build, in this exact order:
-
-| Index | Scene          |
-|-------|----------------|
-| 0     | Persistent     |
-| 1     | Village        |
-| 2     | Shop           |
-| 3     | AuntieHouse    |
-| 4     | FarmPlot       |
-
-(SceneRouter unloads only gameplay scenes; Persistent is never unloaded and
-never left alone.)
-
-### 7. Smoke test (offline is fine)
-
-1. Open `Persistent.unity`, press **Play**.
-2. Console should show, in order:
-   `[tables] loaded …`, `[chain] bootstrap done — tip #N …` (or the offline
-   warning), `[boot] chain status: …`, `[boot] Stage 7 client up.`,
-   then Village loading additively.
-3. With no seed configured the game runs a **local solo chain** — actions
-   mine on this node only. With a seed configured but down, the game runs in
-   read-only mode and the HUD chain dot goes red.
-4. Two editors + `run-two-nodes.ps1` + HubServer = presence visible:
-   move in one window, the other follows (10 Hz + interpolation).
-
-### 8. Run the full stack (order from README)
+To run the full stack:
 
 ```bash
 # terminal 1
@@ -173,12 +100,20 @@ dotnet run --project src/ProjectF.SeedNode     # copy the peer string + apv.txt
 dotnet run --project src/ProjectF.HubServer    # http://127.0.0.1:5170 (h2c)
 ```
 
-Paste the peer string + APV token into NetworkSettings, press Play.
-
 ---
 
-## What Stage 8 removes from this checklist
+## Notes
 
-Scene/prefab/asset generation moves into editor scripts
-(`Assets/Main/Editor/`), leaving at most 3 manual items. Until then this page
-is the source of truth for editor-side wiring.
+> Two-instance gotcha: every build needs its own `InstanceId` — the StorePath
+> template contains `{instanceId}` and `NodePort` must stay 0 (random), or two
+> editors fight over one chain store / port.
+
+- **Regenerating**: re-running any generator rebuilds its output from code.
+  Prefabs are deleted and recreated; scenes are rebuilt from scratch. Only
+  `NetworkSettings.asset` is protected by the **Force Regenerate** toggle.
+- **Real art**: drop PNGs over the placeholder files (same paths, same sprite
+  names, PPU 16) — no code changes needed.
+- **Validation in CI**: `BatchSetup.RunFullSetup` / `RunValidation` exit
+  non-zero with a readable report on failure.
+- Scene ids MUST match `data/pond.csv` (village pond is scene 4 = FarmPlot);
+  `SceneId.cs` is the contract.
