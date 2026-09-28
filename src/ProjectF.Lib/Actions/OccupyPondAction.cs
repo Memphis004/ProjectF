@@ -67,6 +67,9 @@ public sealed class OccupyPondAction : ActionBase
             : new PondOwnershipState(_pondId);
 
         // knowledge.md rule 3: lazy expiry sweep before any decision.
+        // knowledge.md rule 6: slot ownership is keyed by the signer's
+        // Address inside the shared pond state — actions always pass
+        // context.Signer, never a payload-controlled address.
         ownership.ReleaseExpired(blockIndex);
 
         if (ownership.HasActiveSlot(signer, blockIndex))

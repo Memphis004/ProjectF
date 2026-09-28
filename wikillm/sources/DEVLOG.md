@@ -2,6 +2,10 @@
 
 บันทึกการพัฒนาและแก้ไขปัญหา พร้อมเหตุผลและวิธีทดสอบ — เรียงตามลำดับเวลาของงาน
 
+> **หมายเหตุ:** หัวข้อ 1–7 ด้านล่างเป็นบันทึกยุค planet-clicker (Libplanet 0.38,
+> โปรเจกต์เก่า) — เก็บไว้เป็นประวัติและบทเรียน ส่วนงานปัจจุบัน (ProjectF,
+> Libplanet 5.5.3 + MagicOnion 7) เริ่มที่หัวข้อ 8 เป็นต้นไป
+
 สภาพแวดล้อม: Unity **2022.3.62f2** (Windows 11), Libplanet **0.38** (DLL ใน `Assets/LibplanetUnity/Packages/`)
 
 ---
@@ -156,3 +160,120 @@ cp -r pc_test_A_storage pc_test_B_storage
 - preload ของ node ใหม่ยังต้อง copy storage เพื่อเลี่ยง `ChainIdNotFoundException` ในบางกรณี (แก้ที่ root ด้วย genesis bootstrap แล้วแต่ copy storage ยังทำให้ sync เร็วขึ้นมาก)
 - ถ้าเปิดสอง miner → fork (ตามกฎ topology ข้างบน) — ตัวเกมไม่ได้ block ไว้ ผู้เล่นต้องรันให้ถูก role
 - Sync indicator อัปเดตทุก 1 วิ จึงอ่านค่าตอนหน้าจอเปิดทันทีอาจ delay สูงสุด 1 วิ
+
+---
+
+# 8. Stage 7 — Unity client: บันทึกการแก้บักครั้งใหญ่ (ProjectF, 2026-09-28)
+
+Stage 7 ส่งโค้ดฝั่ง client ครบ (Infrastructure + Presentation, 37 สคริปต์,
+manifest/asmdef/sync-dlls) — แต่การ compile ใน Unity จริงเป็นครั้งแรกของโค้ด
+ชุดนี้ เลยไล่แก้บักยาวหลายรอบ Console สรุป root cause ได้เป็น 5 กลุ่มใหญ่
+(หลาย error ที่เห็นหน้าจอเดียวกันมาจาก root เดียวกัน):
+
+## 8.1 สาเหตุกลุ่มที่ 1 — package resolution (manifest)
+
+- **`com.unity.modules.accessibility` ใส่ผิด** — เป็นโมดูลของ Unity 6 ไม่มีใน
+  2022.3 → dependency ไม่ valid แล้ว **block การ resolve ทั้งโปรเจกต์**
+  (ทุก error อื่นหลังจากนั้นเป็นเงาของอันนี้)
+  - บทเรียน: manifest.json ต้องเช็คชื่อโมดูลกับ Unity เวอร์ชันนั้นจริงเสมอ
+    อย่า copy ข้ามเวอร์ชัน
+- เพิ่ม scoped registry **Unity NuGet** (`unitynuget-registry.openupm.com`,
+  scope `org.nuget`) — ใช้ติดตั้ง `Grpc.Net.Client` เป็น UPM package
+- สุดท้ายเลือกทาง NuGetForUnity แทน (ดู 8.2) และ registry นี้คงไว้เป็นทางเลือก
+
+## 8.2 สาเหตุกลุ่มที่ 2 — MagicOnion 7 บน Unity: การแบ่งเจ้าของ DLL
+
+`MagicOnion.Client.Unity` (UPM git, asmdef ชื่อ **`MagicOnion.Unity`**) ประกาศ
+`Grpc.Core.Api.dll` + `Grpc.Net.Client.dll` เป็น `precompiledReferences` —
+ถ้า DLL พวกนี้ไม่มีอยู่ จะพังทั้ง package (`GrpcChannelOptions` /
+`IMagicOnionAwareGrpcChannel` / `Grpc.Net` หาไม่เจอ)
+
+ทางแก้ = แบ่งเจ้าของชัดเจน **หนึ่ง assembly ต้องมีที่เดียวเท่านั้น**:
+
+| Assembly | เจ้าของ |
+|---|---|
+| `MagicOnion.Client`, `MagicOnion.Abstractions`, `MagicOnion.Shared`, `MagicOnion.Serialization.MessagePack` (7.0.0) | **NuGetForUnity** (`Assets/packages.config`) |
+| `Grpc.Net.Client`, `Grpc.Net.Common`, `Grpc.Core.Api` (2.66.0 ตรงกับ HubServer) | **NuGetForUnity** |
+| `MessagePack` (3.1.10) | NuGetForUnity (มีอยู่แล้ว) |
+| YetAnotherHttpHandler (1.11.5, asmdef `Cysharp.Net.Http.YetAnotherHttpHandler`) | **UPM git** |
+| MagicOnion.Client.Unity | **UPM git** |
+| Libplanet stack + ProjectF.* | `tools/sync-dlls.ps1` → `Assets/Plugins/ProjectF` |
+
+- ⚠️ **กับดัก `slimRestore = true`** ใน `Assets/NuGet.config`:
+  NuGetForUnity ติดตั้ง **เฉพาะ** package ที่ประกาศใน packages.config
+  **ไม่ดึง transitive dependencies** — ต้อง enumerate ครบเอง
+  (`MagicOnion.Client` ต้องมี `Serialization.MessagePack` + `Shared` ตาม,
+  `Grpc.Net.Client` ต้องมี `Logging.Abstractions` + `DiagnosticSource`)
+  ถ้า bump เวอร์ชันต้องไล่ nuspec ใหม่ทั้ง chain
+- ⚠️ sync-dlls.ps1 เดิมเผลอ copy `MagicOnion.Abstractions` / `Grpc.Core.Api`
+  ลง Plugins/ProjectF ด้วย (มากับ publish output ของ ProjectF.Shared) →
+  duplicate assembly identity — ใส่ในรายการ skip (`nuget-provided`) แล้ว
+  และห้ามเอากลับเข้า allowlist
+
+## 8.3 สาเหตุกลุ่มที่ 3 — DLL เสียหายเงียบ ๆ (เจอบักที่อันตรายที่สุดของ Stage นี้)
+
+Console รายงาน `ProjectF.Shared` ไม่มีอยู่ (`'Shared' does not exist in the
+namespace 'ProjectF'`) ทั้งที่ DLL sync แล้ว ตรวจแล้วพบว่า
+`ProjectF.Shared.dll` ใน `Assets/Plugins/ProjectF/` มีขนาด **4,096 bytes**
+(ไฟล์จริง 12,800) — **ไฟล์ถูกตัดครึ่ง** จาก session ที่ถูกขัดจังหวะตอน
+write ลงดิสก์ Unity **ไม่ error ว่า DLL เสีย** เพียงแค่ไม่โหลด แล้วรายงาน
+เป็น "หา type ไม่เจอ" เป็นสิบ ๆ จุดแทน
+
+- ตรวจว่า DLL sync แล้วด้วยขนาดไฟล์: `ls -la` เทียบ `bin/Release` กับ
+  `Plugins/ProjectF` — ต่างกัน = sync ไม่สมบูรณ์
+- วิธีแก้: `pwsh tools/sync-dlls.ps1` ใหม่ (script เช็ดโฟลเดอร์แล้ว copy
+  ใหม่ทั้งชุด จึง fix ตัวเองได้)
+- บทเรียน: **"type not found" เป็นได้ทั้ง missing using, missing reference
+  และ corrupted DLL** — เช็คขนาดไฟล์/timestamp ก่อนไล่แก้โค้ด
+
+## 8.4 สาเหตุกลุ่มที่ 4 — โค้ด Unity-side ที่ .NET build ไม่ได้ compile
+
+โค้ด Stage 7 ไม่ได้อยู่ใน ProjectF.sln (Unity compile เอง) ทำให้ได้ compile
+จริงครั้งแรกตอนเปิด Editor — เจอพวง:
+
+- **using หลุด**: `System` (IDisposable/TimeSpan), `System.Threading`
+  (CancellationToken), `Libplanet.Action` (IAction),
+  `ProjectF.Infrastructure.Network` (NetworkSettings),
+  `ProjectF.Shared.Presence` (PlayerMoveRequest),
+  `ProjectF.Lib.Genesis` (GenesisBuilder)
+- **Ambiguity**: `AnimationState` ชนกับ **`UnityEngine.AnimationState`**
+  (legacy class) → ใช้ file-scoped alias
+  `using AnimationState = ProjectF.Shared.Presence.AnimationState;`
+  (`Direction` ไม่ชน จึงใช้ตรง ๆ ได้)
+- **`Tables` ชนกับ namespace** (ProjectF.Tables.Tables vs property name) →
+  alias `GeneratedTables`
+- **`Convert.ToHexString/FromHexString` เป็น .NET 5+** — Mono 2022.3 ไม่มี
+  → เขียน ParseHex/ToHex เอง (จุดเสี่ยง: เดาว่า BCL ใหม่มี = พัง)
+- **C# 9 `init` ต้องมี polyfill `IsExternalInit`** → เพิ่ม
+  `Infrastructure/SystemRuntimeCompatibility.cs`
+- **`(Direction)(-1)` ห้ามใช้ cast ตรง ๆ** (CS0221) → `unchecked((Direction)(-1))`
+- **`ImmutableArray<byte>.ToArray()` ไม่มี** (ตามเวอร์ชัน
+  System.Collections.Immutable ที่ Unity resolve) → copy ผ่าน indexer
+  `raw[i]` — ปลอดภัยทุกเวอร์ชัน
+
+## 8.5 สาเหตุกลุ่มที่ 5 — Libplanet 5.5.3 API: ห้ามเดา ต้อง reflect
+
+ประเด็นเดิมจาก stage-4 ("อย่า invent method names") กลับมาโจมตีอีกรอบ —
+รอบนี้แก้โดย **reflect จาก assembly จริงผ่านโปรเจกต์ scratch dotnet**:
+
+| เดามา | ความจริง 5.5.3 |
+|---|---|
+| `chain.World` (property) | **`chain.GetWorldState()`** (method, no-arg) |
+| `chain.GetBlock(hash)` | **ไม่มี** — ใช้ list ของ tip hash ล่าสุด (64 รายการ) แล้วลอง `GetTxExecution(hash, txId)` ทีละอันแทน |
+| `swarm.PreloadAsync(token)` | **`PreloadAsync(IProgress<BlockSyncState>, CancellationToken)`** — ส่ง `null` progress ได้ |
+| `new ValidatorSet(ImmutableList<Validator>)` | **รับ `List<Validator>`** |
+| `BlockHash` ใช้ `!=` | เป็น struct ไม่มี `operator!=` → **ใช้ `.Equals`** |
+| `PrivateKey.ByteArray` = `byte[]` | เป็น **`ImmutableArray<byte>`** — copy ผ่าน indexer |
+
+วิธี reflect: dotnet scratch project อ้าง `Libplanet 5.5.3` + `Libplanet.Net
+5.5.3` แล้ว `GetMethods/GetProperties` dump — เร็วกว่าเดา-แล้ว-compile-ใน-Unity
+มาก
+
+## 8.6 ผลและสถานะ
+
+- แก้ครบทั้ง 5 กลุ่ม — build ผ่าน, ทุก error ใน console ปิดเป็นรายการ
+- Stage 7 code สมบูรณ์ (Infrastructure + Presentation + DI ผ่าน VContainer,
+  SceneRouter คุมลำดับ load → unload → SetActive → presence ChangeScene)
+- ขั้นถัดไป: ทำตาม `UnityProject/SETUP.md` ใน Editor (scenes/prefabs/
+  NetworkSettings asset/build settings) แล้ว smoke test แบบ offline
+

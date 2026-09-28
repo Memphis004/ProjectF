@@ -97,6 +97,8 @@ public sealed class FishingAction : ActionBase
         }
 
         var avatar = new AvatarState(avatarEncoded);
+        // knowledge.md rule 6: explicit signer == avatar.Address check.
+        EnsureOwner(context, avatar.Address);
 
         IAccount inventoryAccount = GetOrCreateAccount(world, Addresses.Inventory);
         if (inventoryAccount.GetState(signer) is not Dictionary inventoryEncoded)

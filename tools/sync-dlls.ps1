@@ -16,6 +16,17 @@
        Assets/packages) — duplicate assembly identities make Unity refuse to
        load Assembly-CSharp (observed with System.Text.Json 6.x vs 8.x).
 
+    Stage 7 presence-client split of responsibility (learned from the first
+    Editor resolution run):
+      - NuGetForUnity (packages.config) owns MagicOnion.Client,
+        Grpc.Net.Client, Grpc.Net.Common, Grpc.Core.Api — these are exactly
+        the precompiledReferences MagicOnion.Client.Unity's asmdef needs.
+      - The Unity Package Manager owns YetAnotherHttpHandler (UPM git) and
+        MagicOnion.Client.Unity (UPM git).
+      - This script owns ONLY the Libplanet/Bencodex stack + the three
+        ProjectF.* assemblies. It never copies the Grpc/MagicOnion client
+        DLLs.
+
     Usage (from the repository root):
         pwsh tools/sync-dlls.ps1              # Release build
         pwsh tools/sync-dlls.ps1 -Configuration Debug
@@ -95,8 +106,14 @@ $thirdPartyAssemblies = @(
     'Nito.Cancellation.dll',
     'Nito.Collections.Deque.dll',
     'System.Buffers.dll',
-    'Grpc.Core.Api.dll',
-    'MagicOnion.Abstractions.dll',
+    # NOTE: the WHOLE MagicOnion/Grpc client stack is DELIBERATELY absent —
+    # NuGetForUnity installs it (packages.config): MagicOnion.Client,
+    # MagicOnion.Abstractions, MagicOnion.Shared,
+    # MagicOnion.Serialization.MessagePack, Grpc.Net.Client,
+    # Grpc.Net.Common, Grpc.Core.Api. Copying any of them here too would
+    # create duplicate assembly identities. (ProjectF.Shared's publish
+    # output carries MagicOnion.Abstractions + Grpc.Core.Api — the
+    # nugetProvided skip list drops them.)
     'NetMQ.dll',
     'Microsoft.Extensions.Caching.Memory.dll',
     'AsyncEnumerable.dll',
@@ -204,6 +221,10 @@ foreach ($dir in $publishDirs) {
 }
 
 # 2b. Net stack (embedded node) from the NuGet cache — exact pinned versions.
+# (MagicOnion.Client / Grpc.* are NOT here — they come from NuGetForUnity via
+# packages.config; see the header comment. MagicOnion.Abstractions arrives
+# with the ProjectF.Shared publish output, which is fine: it is a different
+# assembly from MagicOnion.Client and does not collide.)
 $nugetCachePackages = @(
     'libplanet.net',
     'libplanet.stun',
@@ -260,3 +281,5 @@ if ($other.Count -gt 0) {
 
 Write-Host ""
 Write-Host "Done. Open the Unity project and check the Console for version conflicts." -ForegroundColor Green
+Write-Host "Presence client stack: MagicOnion.Client + Grpc.Net.Client come from NuGetForUnity" -ForegroundColor Green
+Write-Host "(packages.config); YetAnotherHttpHandler + MagicOnion.Client.Unity come from UPM." -ForegroundColor Green

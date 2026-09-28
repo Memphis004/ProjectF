@@ -80,6 +80,8 @@ public sealed class BuyItemAction : ActionBase
         }
 
         var avatar = new AvatarState(avatarEncoded);
+        // knowledge.md rule 6: explicit signer == avatar.Address check.
+        EnsureOwner(context, avatar.Address);
         if (avatar.FishingLevel < entry.RequiredLevel && avatar.CookingLevel < entry.RequiredLevel)
         {
             throw new InvalidOperationException(

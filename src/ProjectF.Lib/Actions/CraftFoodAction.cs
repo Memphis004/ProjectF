@@ -86,6 +86,8 @@ public sealed class CraftFoodAction : ActionBase
         }
 
         var avatar = new AvatarState(avatarEncoded);
+        // knowledge.md rule 6: explicit signer == avatar.Address check.
+        EnsureOwner(context, avatar.Address);
         if (!avatar.KitchenUnlocked)
         {
             throw new PermissionDeniedException(

@@ -52,6 +52,8 @@ public sealed class RerollTaskBoardAction : ActionBase
         }
 
         var avatar = new AvatarState(avatarEncoded);
+        // knowledge.md rule 6: explicit signer == avatar.Address check.
+        EnsureOwner(context, avatar.Address);
         int level = Math.Max(avatar.FishingLevel, avatar.CookingLevel);
 
         IAccount boardAccount = GetOrCreateAccount(world, Addresses.TaskBoard);

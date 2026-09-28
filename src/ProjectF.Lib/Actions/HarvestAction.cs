@@ -58,6 +58,9 @@ public sealed class HarvestAction : ActionBase
 
         IAccount farmAccount = GetOrCreateAccount(world, Addresses.Farm);
         Address plotKey = Addresses.PlotKey(signer, _plotIndex);
+        // knowledge.md rule 6: plot state is ADDRESSED BY the signer
+        // (PlotKey(signer, …)), so no other player's plot can ever be
+        // reached — the key derivation IS the ownership check.
         if (farmAccount.GetState(plotKey) is not Dictionary plotEncoded)
         {
             throw new FailedLoadStateException(

@@ -60,6 +60,8 @@ public sealed class LeavePondAction : ActionBase
         }
 
         var ownership = new PondOwnershipState(encoded);
+        // knowledge.md rule 6: the released slot is the SIGNER's slot —
+        // context.Signer, never a payload-controlled address.
         if (!ownership.Release(signer))
         {
             throw new InvalidOperationException(
