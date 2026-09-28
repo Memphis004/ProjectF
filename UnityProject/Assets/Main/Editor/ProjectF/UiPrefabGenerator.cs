@@ -318,9 +318,13 @@ namespace ProjectF.Editor
                 promptSo.FindProperty("root")!.objectReferenceValue = promptRect;
                 promptSo.FindProperty("label")!.objectReferenceValue = promptText;
                 promptSo.ApplyModifiedPropertiesWithoutUndo();
-                promptGo.AddComponent<Infrastructure.Interaction.InteractionPromptDriver>();
-                var driverSo = new SerializedObject(
-                    promptGo.GetComponent<Infrastructure.Interaction.InteractionPromptDriver>());
+                // Driver lives on the ALWAYS-ACTIVE root, not on promptGo:
+                // the driver deactivates the prompt GO whenever no interactable
+                // is in range — a driver on that GO would switch itself off on
+                // frame one and never recover (found by the E2E T1 test).
+                var promptDriver =
+                    root.AddComponent<Infrastructure.Interaction.InteractionPromptDriver>();
+                var driverSo = new SerializedObject(promptDriver);
                 driverSo.FindProperty("view")!.objectReferenceValue =
                     promptGo.GetComponent<Infrastructure.Interaction.InteractionPromptView>();
                 driverSo.ApplyModifiedPropertiesWithoutUndo();

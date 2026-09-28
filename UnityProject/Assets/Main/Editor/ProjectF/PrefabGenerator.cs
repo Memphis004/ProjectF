@@ -36,6 +36,7 @@ namespace ProjectF.Editor
             CreateNpc("NpcShopkeeper", EditorPaths.NpcShopkeeper);
             CreateNpc("NpcAuntie", EditorPaths.NpcAuntie);
             CreateTaskBoard();
+            CreateKitchen();
             CreateHud();
             CreateFishingWindow();
             AssetDatabase.SaveAssets();
@@ -321,7 +322,18 @@ namespace ProjectF.Editor
                 renderer.color = color;
 
                 var collider = go.AddComponent<BoxCollider2D>();
+                collider.isTrigger = true;
                 collider.size = new Vector2(1f, 1f);
+
+                // Stage 10: NPCs carry their interactable IN THE PREFAB (a
+                // component added by the SCENE generator serializes as an
+                // inline MonoScript that fails to resolve on next load).
+                if (name == "NpcShopkeeper")
+                {
+                    var npcInteractable = go.AddComponent<NpcInteractable>();
+                    npcInteractable.Configure("SHOP_PROMPT");
+                    ForceBindScript(npcInteractable, go);
+                }
 
                 SavePrefab(go, name);
             }
@@ -342,7 +354,13 @@ namespace ProjectF.Editor
                 renderer.color = new Color(0.72f, 0.55f, 0.32f);
 
                 var collider = go.AddComponent<BoxCollider2D>();
+                collider.isTrigger = true;
                 collider.size = new Vector2(1f, 1f);
+
+                // Stage 10: interactable lives in the prefab (GUID-safe).
+                var boardInteractable = go.AddComponent<TaskBoardInteractable>();
+                boardInteractable.Configure("TASK_PROMPT");
+                ForceBindScript(boardInteractable, go);
 
                 SavePrefab(go, "TaskBoard");
             }
@@ -355,6 +373,63 @@ namespace ProjectF.Editor
         // ------------------------------------------------------------------
         // UI prefabs (Stage 9 wiring)
         // ------------------------------------------------------------------
+
+        /// <summary>Stage 10 kitchen counter (scene 3 interaction point) —
+        /// a prefab, not a scene-time placeholder, for the same inline-
+        /// MonoScript reason as the taskboard/NPC interactables.</summary>
+        private static void CreateKitchen()
+        {
+            GameObject go = new("Kitchen");
+            try
+            {
+                var renderer = go.AddComponent<SpriteRenderer>();
+                renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(
+                    $"{EditorPaths.UiRoot}/WhiteSquare.png");
+                renderer.color = new Color(0.8f, 0.5f, 0.2f, 0.6f);
+
+                var collider = go.AddComponent<BoxCollider2D>();
+                collider.isTrigger = true;
+                collider.size = new Vector2(1f, 1f);
+
+                var kitchenInteractable = go.AddComponent<KitchenInteractable>();
+                kitchenInteractable.Configure("KITCHEN_PROMPT");
+                ForceBindScript(kitchenInteractable, go);
+
+                SavePrefab(go, "Kitchen");
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>Stage 10: explicitly rebind the m_Script reference by
+        /// asset PATH (AssetDatabase.GetAssetPath on the script object Unity
+        /// already assigned). AddComponent<T> resolves the script by class —
+        /// but the saved prefab occasionally serialized the component as
+        /// script-less (m_Script: {fileID: 0}); binding by path makes the
+        /// GUID reference explicit and survives SaveAsPrefabAsset.</summary>
+        private static void ForceBindScript(MonoBehaviour component, GameObject host)
+        {
+            MonoScript script = MonoScript.FromMonoBehaviour(component);
+            if (script is null)
+            {
+                Debug.LogError($"[prefabs] no MonoScript for {component.GetType().Name}");
+                return;
+            }
+
+            string path = AssetDatabase.GetAssetPath(script);
+            if (string.IsNullOrEmpty(path))
+            {
+                Debug.LogError($"[prefabs] script '{script.name}' has no asset path — cannot bind {component.GetType().Name}");
+                return;
+            }
+
+            MonoScript byPath = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+            var so = new SerializedObject(component);
+            so.FindProperty("m_Script")!.objectReferenceValue = byPath;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
 
         private static void CreateHud()
         {

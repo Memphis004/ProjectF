@@ -14,8 +14,9 @@ stage docs: what the spec asked, what shipped, and the traps worth keeping.
   "[E] {verb}" label on the UIRoot World layer) + `InteractionPromptDriver`
   (E key → opens the matching window through IWindowService, so gate/blocker
   semantics match the I-key windows). Concrete markers: `NpcInteractable`
-  (shopkeeper), `TaskBoardInteractable`, `KitchenInteractable` — added by the
-  scene generator, prompt key configured per instance.
+  (shopkeeper), `TaskBoardInteractable`, `KitchenInteractable` — shipped
+  inside their OWNER PREFABS (TaskBoard/NpcShopkeeper/Kitchen) and instanced
+  by the scene generator (one class per file — see the E2E postscript).
 - **Shop (10.2)**: `ShopWindow`/`ShopPresenter` + pure `ShopLogic`.
   Buy list = TbShop ⋈ TbItem (price, daily stock "∞/N", lock icon with the
   required level when fishing AND cooking are below it), quantity stepper
@@ -94,6 +95,49 @@ stage docs: what the spec asked, what shipped, and the traps worth keeping.
   reroll timing constants (`RerollPeriodBlocks = 600`, 2s/block) as display
   logic only; the chain stays the sole authority.
 
+## E2E interactive-test postscript (T1/T2/T3) — three real bugs, one rule
+
+The first true play-mode E2E (teleport next to the board/NPC/kitchen →
+assert `[E]` prompt → open the window through the DRIVER → assert rows →
+close) surfaced three stacked defects that every compile-time check and the
+earlier probe smoke missed:
+
+- **THE MonoScript rule is stricter than thought: a MonoBehaviour that must
+  survive serialization needs its class name == its file name — one class
+  per file, no exceptions.** `Interactables.cs` held three marker classes
+  under the BASE class's file name, and the binder returned a nameless,
+  path-less script (`MonoScript.FromMonoBehaviour` nameLen=0,
+  `FindAssets t:MonoScript <Class>` = 0, `TryGetGUIDAndLocalFileIdentifier`
+  → no guid). Everything the file touched serialized as
+  `m_Script: {fileID: 0}` — the components silently vanished on reload.
+  Namespace is NOT the cause (FishingSpot resolves fine inside a namespace;
+  the file content moved to global ns and stayed broken). The PrefabGenerator
+  "ForceBindScript via MonoScript.FromMonoBehaviour" workaround was a no-op —
+  you cannot write a reference to a script that has no asset. Splitting into
+  `InteractableBase/NpcInteractable/TaskBoardInteractable/KitchenInteractable.cs`
+  (names kept) fixed it instantly (probe: nameLen=21, real GUID). The
+  validation gate never catches this — add a generator-time assertion:
+  every AddComponent'd MonoBehaviour must yield a non-empty
+  `MonoScript.GetScriptPathFromMonoBehaviour`.
+- **A generator must INSTANTIATE the prefab, not just load it.** During the
+  refactor, `LoadPrefab("TaskBoard")` stayed in the PrefabSet while the
+  `Object.Instantiate(prefabs.TaskBoard, …)` line was dropped — Village had
+  no board at all, and the detector failure looked like the serialization
+  bug it had just replaced. Assert placement, not intent: after generating,
+  FindObjectOfType the marker in the saved scene.
+- **A driver that toggles its own GameObject must live on an always-active
+  parent.** `promptGo.SetActive(false)` hid the shared prompt between uses —
+  but `InteractionPromptDriver` sat ON that GO, so its `Update` never ran
+  again after the first hide (and `FindObjectOfType` without `true` couldn't
+  even see it). Fixed by adding the driver to the UIRoot root GO (always
+  active) while only the prompt child toggles.
+- Test-harness notes: `UniTaskVoid` methods invoked via reflection must not
+  be cast to `UniTask` (InvalidCastException) — invoke and POLL state with a
+  plain frame-count loop; combinator timeouts misbehaved under the MCP
+  Roslyn host. E2E evidence lives in `.freebuff/e2e/` (payloads +
+  `t3_kitchen.png`); T1 (TaskBoard, ดูบอร์ดภารกิจ), T2 (Shop NPC,
+  คุยกับร้านค้า, 9 rows), T3 (Kitchen, ใช้ครัว) all PASS in play mode.
+
 ## Environment snapshot (delta from stage 9)
 
 - New lib files: `src/ProjectF.Lib/Actions/SellItemAction.cs`,
@@ -103,16 +147,20 @@ stage docs: what the spec asked, what shipped, and the traps worth keeping.
   (view+presenter+logic), `Presentation/Village/TaskBoardWindow.cs`,
   `Presentation/AuntieHouse/CraftWindow.cs`,
   `Scripts/Tests/` (EditMode asmdef + Stage10LogicTests, 14 tests).
-- Modified: `UiPrefabGenerator` (3 window prefabs + prompt view + Eat button
-  + ~35 new loc keys), `SceneGenerator` (3 prefab fields, interactables on
-  NPC/taskboard/kitchen, CreateInteractionPoint returns GO + trigger), 
-  `PrefabGenerator` (Player carries InteractionDetector), `RootLifetimeScope`
-  (UiPrefabSet×6, WindowPrefab×3, ShopPresenter/TaskBoardPresenter/
-  KitchenPresenter at app scope), `WindowService` (attach hooks),
-  `StateWatcher`/`AvatarSnapshot` (taskboard), `UiBootstrapper`
-  (prompt driver), `ShopLifetimeScope` (ShopPresenter renamed to
-  ShopScenePresenter — the economy presenter is app-scope),
-  localization CSVs (63 → 104 keys).
+- Modified: `UiPrefabGenerator` (3 window prefabs + prompt view+driver on
+  the UIRoot root GO + Eat button + ~35 new loc keys), `SceneGenerator`
+  (3 prefab fields, interactables via OWNER PREFABS, taskboard instanced at
+  (4,2)), `PrefabGenerator` (Player carries InteractionDetector;
+  interactables baked into TaskBoard/NpcShopkeeper/Kitchen prefabs),
+  `RootLifetimeScope` (UiPrefabSet×6, WindowPrefab×3,
+  ShopPresenter/TaskBoardPresenter/KitchenPresenter at app scope),
+  `WindowService` (attach hooks), `StateWatcher`/`AvatarSnapshot`
+  (taskboard), `UiBootstrapper` (prompt driver), `ShopLifetimeScope`
+  (ShopPresenter renamed to ShopScenePresenter — the economy presenter is
+  app-scope), localization CSVs (63 → 104 keys).
+- Interaction split: `Interactables.cs` → `InteractableBase.cs`,
+  `NpcInteractable.cs`, `TaskBoardInteractable.cs`, `KitchenInteractable.cs`
+  (MonoScript rule — see the E2E postscript).
 - Verification: lib tests 98/98, EditMode 14/14, ProjectValidator PASS
   (0/0), play smoke T1/T2/T3 green (Shop opens, TaskBoard opens, Craft opens
   with locked overlay), 0 NREs.

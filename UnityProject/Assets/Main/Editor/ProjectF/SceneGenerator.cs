@@ -173,10 +173,12 @@ namespace ProjectF.Editor
                 PlaceTransition(prefabs, new Vector2(-10f, 0f), SceneId.Shop, new Vector2(2f, 0f));
                 PlaceTransition(prefabs, new Vector2(10f, 0f), SceneId.AuntieHouse, new Vector2(-2f, 0f));
                 PlaceTransition(prefabs, new Vector2(0f, -8f), SceneId.FarmPlot, new Vector2(0f, 4f));
-                // Stage 10: the board itself is the interactable (prompt + E).
-                Object.Instantiate(prefabs.TaskBoard, new Vector3(4f, 2f, 0f), Quaternion.identity)
-                    .AddComponent<Infrastructure.Interaction.TaskBoardInteractable>()
-                    .Configure("TASK_PROMPT");
+                // Stage 10: the board carries its interactable IN THE PREFAB
+                // (GUID-safe serialization — scene-time AddComponent of a
+                // runtime component serializes an inline MonoScript that
+                // fails to resolve on next load). The prefab must still be
+                // INSTANCED here — loading it is not enough.
+                Object.Instantiate(prefabs.TaskBoard, new Vector3(4f, 2f, 0f), Quaternion.identity);
             });
 
         public static void BuildShop() => BuildGameplay(
@@ -184,9 +186,8 @@ namespace ProjectF.Editor
             prefabs =>
             {
                 CreateTilemap(16, 10, "WoodFloor");
-                Object.Instantiate(prefabs.NpcShopkeeper, new Vector3(0f, 2f, 0f), Quaternion.identity)
-                    .AddComponent<Infrastructure.Interaction.NpcInteractable>()
-                    .Configure("SHOP_PROMPT");
+                // NpcInteractable ships in the NpcShopkeeper prefab (GUID-safe).
+                Object.Instantiate(prefabs.NpcShopkeeper, new Vector3(0f, 2f, 0f), Quaternion.identity);
                 PlaceTransition(prefabs, new Vector2(0f, -4f), SceneId.Village, new Vector2(0f, -2f));
             });
 
@@ -196,9 +197,8 @@ namespace ProjectF.Editor
             {
                 CreateTilemap(16, 10, "WoodFloor");
                 Object.Instantiate(prefabs.NpcAuntie, new Vector3(0f, 2f, 0f), Quaternion.identity);
-                GameObject kitchen = CreateInteractionPoint("Kitchen", new Vector2(2f, -2f));
-                kitchen.AddComponent<Infrastructure.Interaction.KitchenInteractable>()
-                    .Configure("KITCHEN_PROMPT");
+                // Kitchen is a prefab with its KitchenInteractable baked in.
+                Object.Instantiate(prefabs.Kitchen, new Vector3(2f, -2f, 0f), Quaternion.identity);
                 PlaceTransition(prefabs, new Vector2(0f, -4f), SceneId.Village, new Vector2(0f, -2f));
             });
 
@@ -239,6 +239,8 @@ namespace ProjectF.Editor
             public GameObject NpcShopkeeper = null!;
             public GameObject NpcAuntie = null!;
             public GameObject TaskBoard = null!;
+
+            public GameObject Kitchen = null!;
             public GameObject Hud = null!;
             public GameObject FishingWindow = null!;
         }
@@ -324,6 +326,7 @@ namespace ProjectF.Editor
                 NpcShopkeeper = LoadPrefab("NpcShopkeeper"),
                 NpcAuntie = LoadPrefab("NpcAuntie"),
                 TaskBoard = LoadPrefab("TaskBoard"),
+                Kitchen = LoadPrefab("Kitchen"),
                 Hud = LoadPrefab("Hud"),
                 FishingWindow = LoadPrefab("FishingWindow"),
             };
@@ -376,24 +379,10 @@ namespace ProjectF.Editor
             map.CompressBounds();
         }
 
-        /// <summary>Generic interactable placeholder (Auntie's kitchen; Stage 10
-        /// attaches the craft presenter).</summary>
-        private static GameObject CreateInteractionPoint(string name, Vector2 at)
-        {
-            GameObject go = new(name);
-            go.transform.position = at;
-            SpriteRenderer renderer = go.AddComponent<SpriteRenderer>();
-            renderer.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(
-                $"{EditorPaths.UiRoot}/WhiteSquare.png");
-            renderer.color = new Color(0.8f, 0.5f, 0.2f, 0.6f);
-
-            // Stage 10: interaction targets need a TRIGGER collider for the
-            // player's InteractionDetector overlap query.
-            BoxCollider2D collider = go.AddComponent<BoxCollider2D>();
-            collider.isTrigger = true;
-            collider.size = new Vector2(1f, 1f);
-            return go;
-        }
+        // Stage 10: the old CreateInteractionPoint was removed — interaction
+        // targets are PREFABS now (Kitchen/TaskBoard/NPC) so their
+        // Interactable components serialize as GUID script references instead
+        // of inline MonoScripts that die on the next scene load.
 
         private static void EnsureFolder()
         {
