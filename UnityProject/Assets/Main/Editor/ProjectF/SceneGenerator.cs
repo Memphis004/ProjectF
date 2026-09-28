@@ -64,6 +64,20 @@ namespace ProjectF.Editor
             Debug.Log("[scenes] generated 5 scenes; Persistent at build index 0.");
         }
 
+        /// <summary>Stage 9 UI prefab paths (UiPrefabGenerator output).</summary>
+        private static GameObject LoadUiPrefab(string name)
+        {
+            GameObject? prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                UiPrefabGenerator.PrefabPath(name));
+            if (prefab is null)
+            {
+                throw new InvalidOperationException(
+                    $"[scenes] UI prefab '{name}' missing — run Generate UI Prefabs first.");
+            }
+
+            return prefab;
+        }
+
         public static void BuildSettings()
         {
             EditorBuildSettings.scenes = SceneNames
@@ -102,6 +116,16 @@ namespace ProjectF.Editor
             new GameObject("EventSystem",
                 typeof(EventSystem), typeof(StandaloneInputModule));
 
+            // Stage 9: UIRoot prefab (Screen Space - Camera canvas on THIS
+            // camera, five layers, loading overlay) — instanced in Persistent
+            // so it survives all scene switches.
+            GameObject uiRootGo = Object.Instantiate(LoadUiPrefab("UIRoot"));
+            uiRootGo.name = "UIRoot";
+            Canvas uiCanvas = uiRootGo.GetComponent<Canvas>();
+            uiCanvas.renderMode = RenderMode.ScreenSpaceCamera;
+            uiCanvas.worldCamera = camera;
+            uiCanvas.planeDistance = 10f;
+
             GameObject scopeGo = new("RootLifetimeScope");
             RootLifetimeScope root = scopeGo.AddComponent<RootLifetimeScope>();
             NetworkSettings settings = SettingsAssetGenerator.Generate(false);
@@ -113,19 +137,22 @@ namespace ProjectF.Editor
             {
                 SerializedObject so = new(root);
                 so.FindProperty("networkSettings")!.objectReferenceValue = settings;
+                so.FindProperty("uiRoot")!.objectReferenceValue =
+                    uiRootGo.GetComponent<Infrastructure.UI.UIRoot>();
+                so.FindProperty("toastPrefab")!.objectReferenceValue =
+                    LoadUiPrefab("Toast").transform as RectTransform;
+                so.FindProperty("inventoryWindowPrefab")!.objectReferenceValue =
+                    LoadUiPrefab("InventoryWindow").transform as RectTransform;
+                so.FindProperty("confirmDialogPrefab")!.objectReferenceValue =
+                    LoadUiPrefab("ConfirmDialog").transform as RectTransform;
+                so.FindProperty("spriteRegistry")!.objectReferenceValue =
+                    AssetDatabase.LoadAssetAtPath<SpriteRegistryAsset>(
+                        EditorPaths.SettingsRoot + "/SpriteRegistry.asset");
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 
-            // HUD canvas root — an EMPTY canvas; Stage 9 fills it. The per-scene
-            // HUD (with labels) is instantiated inside each gameplay scene.
-            GameObject hud = new("HUD");
-            Canvas canvas = hud.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            hud.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
-            hud.AddComponent<GraphicRaycaster>();
-
             EditorSceneManager.SaveScene(scene, $"{ScenesRoot}/Persistent.unity");
-            Debug.Log("[scenes] Persistent saved (camera PPU 16 / 320x180 / upscale RT off).");
+            Debug.Log("[scenes] Persistent saved (camera PPU 16 / 320x180 / upscale RT off, UIRoot wired).");
         }
 
         // ------------------------------------------------------------------
@@ -226,6 +253,10 @@ namespace ProjectF.Editor
                 GameObject spawn = new("Spawn");
                 spawn.transform.SetParent(scopeGo.transform, false);
 
+                // Stage 8: the Hud prefab is a bare GameObject tree (no canvas
+                // — the UIRoot in Persistent owns all canvases). Instantiated
+                // per scene (scene files cannot cross-reference the UIRoot);
+                // UiSceneStartup re-parents it under the live HUD layer.
                 GameObject hud = Object.Instantiate(prefabs.Hud);
                 hud.name = "HUD";
 

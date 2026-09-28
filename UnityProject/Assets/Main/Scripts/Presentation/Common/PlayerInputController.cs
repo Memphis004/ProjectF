@@ -25,13 +25,27 @@ namespace ProjectF.Presentation.Common
 
         public AnimationState Animation { get; private set; } = AnimationState.Idle;
 
-        /// <summary>Set false while a modal window owns input (Stage 9).</summary>
+        /// <summary>Set false while a modal window owns input (Stage 9).
+        /// Superseded in Stage 9 by PlayerInputGate — kept as a manual
+        /// override (cutscenes, tests) ANDed with the gate below.</summary>
         public bool InputEnabled { get; set; } = true;
+
+        private PlayerInputGate? gate;
 
         private void Awake()
         {
             view = GetComponent<PlayerView>();
             body = GetComponent<Rigidbody2D>();
+
+            // Stage 9: world input goes through the UI focus gate — the gate
+            // instance comes from the root container via the player's scene
+            // presenter (NotifySceneEntered pushes it in).
+            var root = FindObjectOfType<ProjectF.Infrastructure.RootLifetimeScope>();
+            if (root is { } && root.Container is { } &&
+                root.Container.TryResolve(typeof(PlayerInputGate), out object resolved))
+            {
+                gate = (PlayerInputGate)resolved;
+            }
 
             // Let the PresenceBroadcaster (same GameObject) read our state
             // without a hard reference cycle in the scene setup.
@@ -41,9 +55,13 @@ namespace ProjectF.Presentation.Common
             }
         }
 
+        /// <summary>Scene presenters push the gate reference right after spawn
+        /// (constructor injection is impossible for pooled scene objects).</summary>
+        public void ConfigureGate(PlayerInputGate inputGate) => gate = inputGate;
+
         private void Update()
         {
-            if (!InputEnabled)
+            if (!InputEnabled || gate is { AllowsMovement: false })
             {
                 return;
             }
@@ -64,7 +82,7 @@ namespace ProjectF.Presentation.Common
 
         private void FixedUpdate()
         {
-            if (!InputEnabled)
+            if (!InputEnabled || gate is { AllowsMovement: false })
             {
                 body.velocity = Vector2.zero;
                 return;

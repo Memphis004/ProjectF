@@ -79,5 +79,17 @@ namespace ProjectF.Presentation.Common
 
         public void Teleport(Vector3 position) =>
             _player?.Teleport(position);
+
+        /// <summary>Stage 9: hands the app-lifetime UI focus gate to the
+        /// persisted player's input controller (called by every scene's
+        /// startup — the player survives scenes, the gate reference is
+        /// re-pushed on every spawn just in case).</summary>
+        public void PushInputGate(PlayerInputGate gate)
+        {
+            if (_player is { })
+            {
+                _player.GetComponent<PlayerInputController>()?.ConfigureGate(gate);
+            }
+        }
     }
 }

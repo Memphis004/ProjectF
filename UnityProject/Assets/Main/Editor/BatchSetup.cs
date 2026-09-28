@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -15,22 +16,37 @@ namespace ProjectF.Editor
     /// </summary>
     public static class BatchSetup
     {
+        /// <summary>Actions queued while play mode was active; replayed once
+        /// the editor is back in edit mode (see <see cref="RunGuarded"/>).</summary>
+        private static readonly List<System.Action> DeferredRuns =
+            new List<System.Action>();
+
         /// <summary>The generation pipeline, shared by the window's
-        /// "Full Setup" button and batch mode.</summary>
+        /// "Full Setup" button and batch mode. Stage 9: UI prefabs generate
+        /// between the world prefabs and the scenes (scenes wire UIRoot).</summary>
         public static void RunFullSetupSteps()
         {
-            PlaceholderSpriteGenerator.GenerateAll();
-            SettingsAssetGenerator.Generate(forceRegenerate: false);
-            PrefabGenerator.GenerateAll();
-            SceneGenerator.GenerateAll();
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
+            RunGuarded("full-setup", () =>
+            {
+                PlaceholderSpriteGenerator.GenerateAll();
+                SettingsAssetGenerator.Generate(forceRegenerate: false);
+                PrefabGenerator.GenerateAll();
+                UiPrefabGenerator.GenerateAll();
+                SceneGenerator.GenerateAll();
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+            });
         }
 
         /// <summary>-executeMethod target: full setup + validation, exits
         /// non-zero on validation failure (batch mode only — interactive
         /// callers keep the editor open).</summary>
         public static void RunFullSetup()
+        {
+            RunGuarded("batch", RunFullSetupNow);
+        }
+
+        private static void RunFullSetupNow()
         {
             try
             {
@@ -60,6 +76,11 @@ namespace ProjectF.Editor
         /// <summary>-executeMethod target for validation-only CI runs.</summary>
         public static void RunValidation()
         {
+            RunGuarded("validate", ValidateNow);
+        }
+
+        private static void ValidateNow()
+        {
             ValidationReport report = ProjectValidator.Validate();
             string text = report.Render();
             if (report.Ok)
@@ -81,6 +102,63 @@ namespace ProjectF.Editor
             if (Application.isBatchMode)
             {
                 EditorApplication.Exit(exitCode);
+            }
+        }
+
+        /// <summary>
+        /// Stage 9 hardening (see stage-9 lessons): running the generators or
+        /// the validator while the editor plays corrupted the project —
+        /// prefabs were delete+recreated with fresh GUIDs and SceneGenerator
+        /// aborted at EditorSceneManager.NewScene, leaving on-disk scenes
+        /// pointing at dead references. If play mode is active this stops it
+        /// first and replays the action once edit mode is restored.
+        /// </summary>
+        public static void RunGuarded(string tag, System.Action run)
+        {
+            if (!EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                run();
+                return;
+            }
+
+            Debug.LogWarning(
+                $"[{tag}] play mode is active — stopping play first; the " +
+                "action will rerun automatically once edit mode is restored " +
+                "(generating/validating during play corrupts prefab GUIDs).");
+
+            DeferredRuns.Add(run);
+            EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+            EditorApplication.ExitPlaymode();
+        }
+
+        private static void OnPlayModeStateChanged(PlayModeStateChange state)
+        {
+            switch (state)
+            {
+                case PlayModeStateChange.EnteredEditMode:
+                    // One more editor tick so teardown fully settles.
+                    EditorApplication.delayCall += ReplayDeferredRuns;
+                    break;
+
+                case PlayModeStateChange.EnteredPlayMode:
+                    // Exiting play was aborted (or Play was pressed again):
+                    // drop anything queued so generation never fires mid-play.
+                    DeferredRuns.Clear();
+                    EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+                    break;
+            }
+        }
+
+        private static void ReplayDeferredRuns()
+        {
+            EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+            System.Action[] runs = DeferredRuns.ToArray();
+            DeferredRuns.Clear();
+
+            foreach (System.Action run in runs)
+            {
+                run();
             }
         }
 

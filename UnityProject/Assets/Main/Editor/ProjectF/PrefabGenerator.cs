@@ -356,27 +356,57 @@ namespace ProjectF.Editor
 
         private static void CreateHud()
         {
-            GameObject canvas = new("HudCanvas");
+            // Stage 9: the Hud prefab is a canvas-less GameObject tree — the
+            // root carries a RectTransform that STRETCHES over whatever layer
+            // it is parented to (UiSceneStartup re-parents it under the live
+            // UIRoot HUD layer; scene files cannot cross-reference the
+            // Persistent UIRoot). The UIRoot in Persistent owns ALL
+            // canvases; each gameplay scene instantiates this tree.
+            GameObject canvas = new("Hud");
+            var hudRoot = canvas.AddComponent<RectTransform>();
+            hudRoot.anchorMin = Vector2.zero;
+            hudRoot.anchorMax = Vector2.one;
+            hudRoot.offsetMin = Vector2.zero;
+            hudRoot.offsetMax = Vector2.zero;
             try
             {
-                var rt = canvas.AddComponent<RectTransform>();
-                rt.sizeDelta = new Vector2(320f, 180f);
-                var canvasComponent = canvas.AddComponent<Canvas>();
-                canvasComponent.renderMode = RenderMode.ScreenSpaceOverlay;
-                canvasComponent.additionalShaderChannels = AdditionalCanvasShaderChannels.TexCoord1 |
-                    AdditionalCanvasShaderChannels.TexCoord2;
-                canvas.AddComponent<CanvasScaler>().uiScaleMode =
-                    CanvasScaler.ScaleMode.ConstantPixelSize;
-                canvas.AddComponent<GraphicRaycaster>();
+                // Rows anchor to the TOP-LEFT of the stretched HUD root;
+                // anchoredPosition.y is NEGATIVE so y grows DOWN from the top
+                // edge. Coordinates are in the 320x180 reference space.
+                AddHudText(canvas, "NameLabel", 4f, -3f, 150f, 10f, TextAnchor.UpperLeft);
+                AddHudText(canvas, "StaminaLabel", 4f, -13f, 150f, 9f, TextAnchor.UpperLeft);
 
-                AddUiText(canvas, "NameLabel", new Vector2(-150f, 78f));
-                AddUiText(canvas, "StaminaLabel", new Vector2(-150f, 60f));
-                AddUiText(canvas, "GoldLabel", new Vector2(-150f, 42f));
-                AddUiText(canvas, "LevelLabel", new Vector2(-150f, 24f));
-                AddUiText(canvas, "SceneLabel", new Vector2(140f, 78f), TextAnchor.UpperRight);
-                AddUiText(canvas, "TipLabel", new Vector2(140f, 60f), TextAnchor.UpperRight);
-                AddUiImage(canvas, "ChainStatusDot", new Vector2(20f, -78f), 8f);
-                AddUiImage(canvas, "PresenceStatusDot", new Vector2(38f, -78f), 8f);
+                // Stamina bar: dark back + green fill (fillAmount driven).
+                var staminaBack = AddHudBar(canvas, "StaminaBarBack", 4f, -24f, 80f, 4f,
+                    new Color(0f, 0f, 0f, 0.6f));
+                staminaBack.type = Image.Type.Simple; // back is NOT fill-driven
+                AddHudBar(canvas, "StaminaBar", 4f, -24f, 80f, 4f,
+                    new Color(0.36f, 0.78f, 0.35f));
+
+                AddHudText(canvas, "GoldLabel", 4f, -30f, 150f, 9f, TextAnchor.UpperLeft);
+                AddHudText(canvas, "LevelLabel", 4f, -39f, 150f, 9f, TextAnchor.UpperLeft);
+
+                // Fishing + cooking exp bars under the level label.
+                var fishingBack = AddHudBar(canvas, "FishingExpBack", 4f, -48f, 60f, 3f,
+                    new Color(0f, 0f, 0f, 0.6f));
+                fishingBack.type = Image.Type.Simple;
+                AddHudBar(canvas, "FishingExpBar", 4f, -48f, 60f, 3f,
+                    new Color(0.30f, 0.60f, 0.80f));
+
+                var cookingBack = AddHudBar(canvas, "CookingExpBack", 4f, -52f, 60f, 3f,
+                    new Color(0f, 0f, 0f, 0.6f));
+                cookingBack.type = Image.Type.Simple;
+                AddHudBar(canvas, "CookingExpBar", 4f, -52f, 60f, 3f,
+                    new Color(0.85f, 0.45f, 0.40f));
+
+                AddHudText(canvas, "SceneLabel", 166f, -3f, 150f, 10f, TextAnchor.UpperRight);
+                AddHudText(canvas, "TipLabel", 166f, -13f, 150f, 9f, TextAnchor.UpperRight);
+
+                // Status dots — 8x8 squares top-right under the tip label.
+                AddHudBar(canvas, "ChainStatusDot", 296f, -24f, 8f, 8f,
+                    new Color(0.85f, 0.30f, 0.25f));
+                AddHudBar(canvas, "PresenceStatusDot", 286f, -24f, 8f, 8f,
+                    new Color(0.85f, 0.30f, 0.25f));
 
                 // HudView + name-based wiring (HudView fields are optional at
                 // runtime, but the validator requires every scope reference —
@@ -387,10 +417,16 @@ namespace ProjectF.Editor
                     canvas.transform.Find("NameLabel")!.GetComponent<Text>();
                 so.FindProperty("staminaLabel")!.objectReferenceValue =
                     canvas.transform.Find("StaminaLabel")!.GetComponent<Text>();
+                so.FindProperty("staminaBar")!.objectReferenceValue =
+                    canvas.transform.Find("StaminaBar")!.GetComponent<Image>();
                 so.FindProperty("goldLabel")!.objectReferenceValue =
                     canvas.transform.Find("GoldLabel")!.GetComponent<Text>();
                 so.FindProperty("levelLabel")!.objectReferenceValue =
                     canvas.transform.Find("LevelLabel")!.GetComponent<Text>();
+                so.FindProperty("fishingExpBar")!.objectReferenceValue =
+                    canvas.transform.Find("FishingExpBar")!.GetComponent<Image>();
+                so.FindProperty("cookingExpBar")!.objectReferenceValue =
+                    canvas.transform.Find("CookingExpBar")!.GetComponent<Image>();
                 so.FindProperty("sceneLabel")!.objectReferenceValue =
                     canvas.transform.Find("SceneLabel")!.GetComponent<Text>();
                 so.FindProperty("tipLabel")!.objectReferenceValue =
@@ -469,6 +505,54 @@ namespace ProjectF.Editor
             rect.sizeDelta = size;
             rect.localScale = Vector3.one;
             return rect;
+        }
+
+        /// <summary>Stage 9 HUD rows: anchors TOP-LEFT of the HUD layer
+        /// (0..320 x 0..180 reference space, y measured DOWN from the top).
+        /// The bare-tree Hud is re-parented under the UIRoot HUD layer at
+        /// runtime, where positive anchoredPosition grows right/down — these
+        /// helpers give the labels screen-space coordinates directly.</summary>
+        private static RectTransform CreateHudRow(
+            GameObject parent, string name, float x, float y, float w, float h)
+        {
+            GameObject go = new(name);
+            go.transform.SetParent(parent.transform, false);
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(x, y);
+            rect.sizeDelta = new Vector2(w, h);
+            rect.localScale = Vector3.one;
+            return rect;
+        }
+
+        private static Text AddHudText(
+            GameObject parent, string name, float x, float y, float w, float h,
+            TextAnchor anchor, int fontSize = 8)
+        {
+            var rect = CreateHudRow(parent, name, x, y, w, h);
+            Text text = rect.gameObject.AddComponent<Text>();
+            text.text = name;
+            text.alignment = anchor;
+            text.raycastTarget = false;
+            text.color = Color.white;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.fontSize = fontSize;
+            return text;
+        }
+
+        private static Image AddHudBar(
+            GameObject parent, string name, float x, float y, float w, float h, Color color)
+        {
+            var rect = CreateHudRow(parent, name, x, y, w, h);
+            Image image = rect.gameObject.AddComponent<Image>();
+            image.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(
+                $"{EditorPaths.UiRoot}/WhiteSquare.png");
+            image.color = color;
+            image.type = Image.Type.Filled;
+            image.fillMethod = Image.FillMethod.Horizontal;
+            return image;
         }
 
         private static Text AddUiText(

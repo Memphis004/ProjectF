@@ -71,6 +71,8 @@ namespace ProjectF.Presentation.FarmPlot
             player.BindPrefab(presenter.PlayerPrefab);
             player.EnsureSpawned(presenter.SpawnPoint.position);
             player.NotifySceneEntered(Infrastructure.Scene.SceneId.FarmPlot);
+            player.PushInputGate(presenter.InputGate);
+            UiSceneStartup.AttachHud(presenter.HudView);
 
             presenter.Start();
         }
@@ -98,13 +100,19 @@ namespace ProjectF.Presentation.FarmPlot
         private readonly FishingPresenter fishing;
         private bool started;
 
+        public PlayerInputGate InputGate { get; }
+        public HudView HudView { get; }
+
         public FarmPlotPresenter(
             HudView hudView, HudPresenter hudPresenter, StateWatcher stateWatcher,
+            PlayerInputGate inputGate,
             FishingView fishingView, FishingPresenter fishingPresenter,
             RemotePlayerView remotePlayerPrefab, PlayerView playerPrefab, Transform spawnPoint)
         {
+            HudView = hudView;
             hud = hudPresenter;
             this.stateWatcher = stateWatcher;
+            InputGate = inputGate;
             fishing = fishingPresenter;
             RemotePlayerPrefab = remotePlayerPrefab;
             PlayerPrefab = playerPrefab;

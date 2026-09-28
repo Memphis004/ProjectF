@@ -53,6 +53,11 @@ namespace ProjectF.Editor
                 Run("Generate Prefabs", PrefabGenerator.GenerateAll);
             }
 
+            if (GUILayout.Button("Generate UI Prefabs", GUILayout.Height(28f)))
+            {
+                Run("Generate UI Prefabs", UiPrefabGenerator.GenerateAll);
+            }
+
             if (GUILayout.Button("Generate Scenes", GUILayout.Height(28f)))
             {
                 Run("Generate Scenes", SceneGenerator.GenerateAll);
@@ -90,14 +95,20 @@ namespace ProjectF.Editor
 
         private static void Run(string label, System.Action action)
         {
-            try
+            string tag = label.ToLowerInvariant().Replace(' ', '-');
+            // Stage 9: route every generator/validator through the play-mode
+            // guard — regenerating during play corrupts prefab GUIDs.
+            BatchSetup.RunGuarded(tag, () =>
             {
-                action();
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogError($"[{label.ToLowerInvariant().Replace(' ', '-')}] FAILED — {ex}");
-            }
+                try
+                {
+                    action();
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"[{tag}] FAILED — {ex}");
+                }
+            });
         }
     }
 }

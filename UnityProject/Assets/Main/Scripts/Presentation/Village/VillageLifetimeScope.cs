@@ -83,6 +83,14 @@ namespace ProjectF.Presentation.Village
             player.EnsureSpawned(presenter.SpawnPoint.position);
             player.NotifySceneEntered(SceneId.Village);
 
+            // Stage 9: point the (persisted) player's input controller at the
+            // app-lifetime UI focus gate — windows/modals stop the walking.
+            player.PushInputGate(presenter.InputGate);
+
+            // Stage 9: move this scene's HUD instance under the UIRoot's HUD
+            // layer (scene files cannot reference the Persistent UIRoot).
+            UiSceneStartup.AttachHud(presenter.HudView);
+
             presenter.Start();
         }
 
@@ -100,12 +108,18 @@ namespace ProjectF.Presentation.Village
         private readonly HudPresenter hud;
         private readonly StateWatcher stateWatcher;
 
+        public PlayerInputGate InputGate { get; }
+        public HudView HudView { get; }
+
         public VillagePresenter(
             HudView hudView, HudPresenter hudPresenter, StateWatcher stateWatcher,
+            PlayerInputGate inputGate,
             RemotePlayerView remotePlayerPrefab, PlayerView playerPrefab, Transform spawnPoint)
         {
+            HudView = hudView;
             hud = hudPresenter;
             this.stateWatcher = stateWatcher;
+            InputGate = inputGate;
             RemotePlayerPrefab = remotePlayerPrefab;
             PlayerPrefab = playerPrefab;
             SpawnPoint = spawnPoint;

@@ -1,0 +1,70 @@
+# ProjectF localization — Thai (default, spec 9.5: Thai first)
+# key,value
+# UI chrome
+UI_STAMINA,แรง
+UI_GOLD,ทอง
+UI_LEVEL,เลเวล
+UI_SCENE,ฉาก
+UI_CHAIN_SYNCED,เชนพร้อม
+UI_CHAIN_SYNCING,กำลังซิงก์
+UI_CHAIN_BOOTSTRAPPING,กำลังเริ่มระบบ
+UI_CHAIN_OFFLINE,ออฟไลน์
+UI_PRESENCE_ONLINE,ออนไลน์
+UI_PRESENCE_OFFLINE,ออฟไลน์
+UI_LOADING,กำลังโหลด
+UI_LOADING_SYNCING_BLOCK,กำลังซิงก์บล็อก {0}
+UI_LOADING_SYNCING_BLOCK_TOTAL,กำลังซิงก์บล็อก {0} / {1}
+UI_CONFIRM,ยืนยัน
+UI_CANCEL,ยกเลิก
+UI_INVENTORY,ของในกระเป๋า
+UI_TAB_ALL,ทั้งหมด
+UI_TAB_BAIT,เหยื่อ
+UI_TAB_ROD,เบ็ด
+UI_TAB_FISH,ปลา
+UI_TAB_SEED,เมล็ด
+UI_TAB_CROP,ผัก
+UI_TAB_MATERIAL,วัสดุ
+UI_TAB_FOOD,อาหาร
+UI_TOOLTIP_PRICE,ราคาฐาน {0} ทอง
+UI_TOOLTIP_COUNT,มี {0} ชิ้น
+UI_EMPTY_INVENTORY,ยังไม่มีของ — ไปตกปลาหรือปลูกผักก่อน
+# Toasts
+TOAST_CHAIN_OFFLINE,เชนเชื่อมต่อไม่ได้ โหมดอ่านอย่างเดียว
+TOAST_PRESENCE_OFFLINE,ฮับล่ม โหมดผู้เล่นเดี่ยว
+TOAST_ACTION_PENDING,กำลังรอบล็อกยืนยัน…
+# Items (data/item.csv name_key)
+ITEM_NAME_BAIT_WORM,หนอน
+ITEM_NAME_BAIT_SHRIMP,กุ้งฝอย
+ITEM_NAME_BAIT_GOLD_LURE,เหยื่อกลอยันทอง
+ITEM_NAME_ROD_WOOD,เบ็ดไม้
+ITEM_NAME_ROD_BAMBOO,เบ็ดไผ่
+ITEM_NAME_ROD_STEEL,เบ็ดเหล็ก
+ITEM_NAME_FISH_NILOTICA,ปลานิล
+ITEM_NAME_FISH_CATFISH,ปลาดุก
+ITEM_NAME_FISH_STRIPED_SNAKEHEAD,ปลาช่อนลาย
+ITEM_NAME_FISH_GIANT_SNAKEHEAD,ปลาช่อน
+ITEM_NAME_FISH_CLIMBING_PERCH,ปลาหมอ
+ITEM_NAME_FISH_ROHU,ปลานวลจันทร์น้ำจืด
+ITEM_NAME_FISH_MARBLE_GOBY,ปลาบู่ทอง
+ITEM_NAME_FISH_GOLDEN_CARP,ปลาคาร์พทอง
+ITEM_NAME_SEED_TOMATO,เมล็ดมะเขือเทศ
+ITEM_NAME_SEED_CARROT,เมล็ดแครอท
+ITEM_NAME_SEED_PUMPKIN,เมล็ดฟักทอง
+ITEM_NAME_CROP_TOMATO,มะเขือเทศ
+ITEM_NAME_CROP_CARROT,แครอท
+ITEM_NAME_CROP_PUMPKIN,ฟักทอง
+ITEM_NAME_MATERIAL_SALT,เกลือ
+ITEM_NAME_MATERIAL_FISH_SAUCE,น้ำปลา
+ITEM_NAME_MATERIAL_HERB,สมุนไพร
+ITEM_NAME_FOOD_GRILLED_FISH,ปลาย่าง
+ITEM_NAME_FOOD_GRILLED_FISH_GREAT,ปลาย่างสุดเด็ด
+ITEM_NAME_FOOD_FISH_SOUP,ซุปปลาผัก
+ITEM_NAME_FOOD_FISH_SOUP_GREAT,ซุปปลาผักสุดเด็ด
+ITEM_NAME_FOOD_SPICY_FISH,ปลาผัดเผ็ด
+ITEM_NAME_FOOD_SPICY_FISH_GREAT,ปลาผัดเผ็ดสุดเด็ด
+# Ponds (data/pond.csv name_key)
+POND_NAME_VILLAGE_SMALL,บ่อปลาหมู่บ้าน
+# Recipes (data/recipe.csv name_key)
+RECIPE_NAME_GRILLED_FISH,ปลาย่าง
+RECIPE_NAME_FISH_SOUP,ซุปปลาผัก
+RECIPE_NAME_SPICY_FISH,ปลาผัดเผ็ด

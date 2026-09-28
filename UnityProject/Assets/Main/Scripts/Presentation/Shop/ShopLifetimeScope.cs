@@ -66,6 +66,8 @@ namespace ProjectF.Presentation.Shop
             player.BindPrefab(presenter.PlayerPrefab);
             player.EnsureSpawned(presenter.SpawnPoint.position);
             player.NotifySceneEntered(Infrastructure.Scene.SceneId.Shop);
+            player.PushInputGate(presenter.InputGate);
+            UiSceneStartup.AttachHud(presenter.HudView);
 
             presenter.Start();
         }
@@ -84,12 +86,18 @@ namespace ProjectF.Presentation.Shop
         private readonly HudPresenter hud;
         private readonly StateWatcher stateWatcher;
 
+        public PlayerInputGate InputGate { get; }
+        public HudView HudView { get; }
+
         public ShopPresenter(
             HudView hudView, HudPresenter hudPresenter, StateWatcher stateWatcher,
+            PlayerInputGate inputGate,
             RemotePlayerView remotePlayerPrefab, PlayerView playerPrefab, Transform spawnPoint)
         {
+            HudView = hudView;
             hud = hudPresenter;
             this.stateWatcher = stateWatcher;
+            InputGate = inputGate;
             RemotePlayerPrefab = remotePlayerPrefab;
             PlayerPrefab = playerPrefab;
             SpawnPoint = spawnPoint;

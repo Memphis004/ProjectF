@@ -1,5 +1,6 @@
 using Cysharp.Threading.Tasks;
 using ProjectF.Infrastructure.Network;
+using ProjectF.Infrastructure.UI;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -25,11 +26,15 @@ namespace ProjectF.Infrastructure.Scene
     /// If the presence client is offline, GoToAsync still completes normally —
     /// local scene loading NEVER depends on the hub (UX contract: offline hub =
     /// single-player visual mode).
+    ///
+    /// Stage 9: every hop shows the LoadingOverlay for the duration of the
+    /// additive load (spec 9.4 "used during scene transitions").
     /// </summary>
     public sealed class SceneRouter
     {
         private readonly IPresenceClient _presenceClient;
         private readonly ISceneEvents _sceneEvents;
+        private readonly LoadingPresenter? _loading;
 
         /// <summary>SceneId of the currently live additive scene; 0 before the first GoToAsync.</summary>
         public SceneId Current { get; private set; }
@@ -40,9 +45,12 @@ namespace ProjectF.Infrastructure.Scene
             _sceneEvents = sceneEvents;
         }
 
-        public SceneRouter(IPresenceClient presenceClient)
-            : this(presenceClient, new NullSceneEvents())
+        /// <summary>Stage 9 overload: routes through the loading overlay.</summary>
+        public SceneRouter(
+            IPresenceClient presenceClient, ISceneEvents sceneEvents, LoadingPresenter loading)
+            : this(presenceClient, sceneEvents)
         {
+            _loading = loading;
         }
 
         public bool IsLoaded(SceneId sceneId) =>
@@ -64,6 +72,8 @@ namespace ProjectF.Infrastructure.Scene
             }
 
             SceneId previous = Current;
+
+            _loading?.Show("…");
 
             // 1. ADDITIVE load first — the previous scene stays alive so the
             //    screen never shows the Persistent-only void.
@@ -98,6 +108,8 @@ namespace ProjectF.Infrastructure.Scene
             {
                 await _presenceClient.ChangeSceneAsync((int)target, spawnX, spawnY);
             }
+
+            _loading?.Hide();
         }
 
         /// <summary>First-run entry point: boot lands on Village with no previous
@@ -111,6 +123,8 @@ namespace ProjectF.Infrastructure.Scene
 
             string sceneName = target.ToSceneName();
 
+            _loading?.Show("…");
+
             await SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Additive);
             SceneManager.SetActiveScene(SceneManager.GetSceneByName(sceneName));
 
@@ -121,6 +135,8 @@ namespace ProjectF.Infrastructure.Scene
             {
                 await _presenceClient.ChangeSceneAsync((int)target, spawnX, spawnY);
             }
+
+            _loading?.Hide();
         }
     }
 }

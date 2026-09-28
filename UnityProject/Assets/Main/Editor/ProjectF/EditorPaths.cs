@@ -17,6 +17,8 @@ namespace ProjectF.Editor
         public const string SceneRoot = "Assets/Main/Scenes";
         public const string SettingsRoot = "Assets/Main/Settings";
         public const string UiRoot = "Assets/Main/Art/Placeholder/UI";
+        public const string ResourcesRoot = "Assets/Main/Resources";
+        public const string LocalizationRoot = "Assets/Main/Resources/Localization";
 
         public const int PixelsPerUnit = 16;
         public const int TileSize = 16;

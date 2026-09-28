@@ -58,8 +58,9 @@ above)** (or run the batch command above). This produces, in dependency order:
 |---|---|
 | Generate Placeholder Sprites | `Assets/Main/Art/Placeholder/` — tiles, 16×32 player sheet (4 dirs × 4 frames), 32×32 9-slice panel, one 16×16 icon per Luban item id (colours keyed by category). Point filter, no compression, PPU 16. |
 | Generate Settings Assets | `Assets/Main/Settings/NetworkSettings.asset` with defaults; "Allow downloads over HTTP" = Always allowed. Existing settings are **never** overwritten unless **Force Regenerate** is ticked. |
-| Generate Prefabs | `Assets/Main/Prefabs/` — Player (kinematic RB2D), RemotePlayer + name tag, SceneTransitionTrigger, FishingSpot (pondId 1), FarmTile, NpcShopkeeper, NpcAuntie, TaskBoard, Hud, FishingWindow, PlayerController. |
-| Generate Scenes | `Assets/Main/Scenes/` — Persistent (index 0: Pixel Perfect Camera PPU 16 / 320×180 / upscale RT off, EventSystem, RootLifetimeScope + settings, HUD canvas root) + Village / Shop / AuntieHouse / FarmPlot, all wired and added to build settings in order. |
+| Generate Prefabs | `Assets/Main/Prefabs/` — Player (kinematic RB2D), RemotePlayer + name tag, SceneTransitionTrigger, FishingSpot (pondId 1), FarmTile, NpcShopkeeper, NpcAuntie, TaskBoard, **Hud (bare tree: bars, exp, dots — re-parented under UIRoot at runtime)**, FishingWindow, PlayerController. |
+| Generate UI Prefabs (Stage 9) | `Assets/Main/Prefabs/UI/` — UIRoot (Screen Space - Camera 320×180 canvas, five layers World/HUD/Window/Modal/Toast with sorting 0/10/20/30/40, LoadingOverlay + binder, UiInputDriver), Toast row, InventoryWindow (tabs/grid/tooltip), ConfirmDialog (modal). Also bakes `Assets/Main/Settings/SpriteRegistry.asset` (white square, 9-slice panel, one icon per item id). |
+| Generate Scenes | `Assets/Main/Scenes/` — Persistent (index 0: Pixel Perfect Camera PPU 16 / 320×180 / upscale RT off, EventSystem, **UIRoot instance wired to the camera**, RootLifetimeScope + settings + UI prefabs + sprite registry) + Village / Shop / AuntieHouse / FarmPlot, all wired and added to build settings in order. |
 | Validate Project | Static checks: build-settings order, exactly one LifetimeScope per scene, every scope reference assigned, one icon per item id. |
 
 ### 2. Point NetworkSettings at a seed (optional for offline play)
@@ -90,6 +91,11 @@ don't change `NodePort` or remove `{instanceId}` (two-instance gotcha below).
    configured but down it runs read-only and the HUD chain dot goes red.
 4. Two editors + `run-two-nodes.ps1` + HubServer = presence visible: move in
    one window, the other follows (10 Hz + interpolation).
+5. Stage 9 UI smoke: the UIRoot shows the loading overlay during boot,
+   `I` opens the InventoryWindow (grid + category tabs + tooltip from
+   TbItem), `Escape` closes the top window, a modal (ConfirmDialog) dims and
+   blocks the world below it. Toasts: `IToastService.Info/Success/Warning/
+   Error` (3s, errors 6s) and `ShowPending(...)` for the confirming spinner.
 
 To run the full stack:
 

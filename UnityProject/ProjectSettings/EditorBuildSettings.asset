@@ -7,17 +7,17 @@ EditorBuildSettings:
   m_Scenes:
   - enabled: 1
     path: Assets/Main/Scenes/Persistent.unity
-    guid: 00000000000000000000000000000000
+    guid: b9cd38457e4d30440b5bf1626c131a68
   - enabled: 1
     path: Assets/Main/Scenes/Village.unity
-    guid: 00000000000000000000000000000000
+    guid: 79d9524dbfb9193409744e9f556ee6d4
   - enabled: 1
     path: Assets/Main/Scenes/Shop.unity
-    guid: 00000000000000000000000000000000
+    guid: b17127df28c28c446ab00059e6fdc3f1
   - enabled: 1
     path: Assets/Main/Scenes/AuntieHouse.unity
-    guid: 00000000000000000000000000000000
+    guid: 2033a54801d1de84c978f2f27009ea1b
   - enabled: 1
     path: Assets/Main/Scenes/FarmPlot.unity
-    guid: 00000000000000000000000000000000
+    guid: e94b70802e09ad94a840bf0f3112788b
   m_configObjects: {}

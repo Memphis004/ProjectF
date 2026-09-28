@@ -65,6 +65,8 @@ namespace ProjectF.Presentation.AuntieHouse
             player.BindPrefab(presenter.PlayerPrefab);
             player.EnsureSpawned(presenter.SpawnPoint.position);
             player.NotifySceneEntered(Infrastructure.Scene.SceneId.AuntieHouse);
+            player.PushInputGate(presenter.InputGate);
+            UiSceneStartup.AttachHud(presenter.HudView);
 
             presenter.Start();
         }
@@ -83,12 +85,18 @@ namespace ProjectF.Presentation.AuntieHouse
         private readonly HudPresenter hud;
         private readonly StateWatcher stateWatcher;
 
+        public PlayerInputGate InputGate { get; }
+        public HudView HudView { get; }
+
         public AuntieHousePresenter(
             HudView hudView, HudPresenter hudPresenter, StateWatcher stateWatcher,
+            PlayerInputGate inputGate,
             RemotePlayerView remotePlayerPrefab, PlayerView playerPrefab, Transform spawnPoint)
         {
+            HudView = hudView;
             hud = hudPresenter;
             this.stateWatcher = stateWatcher;
+            InputGate = inputGate;
             RemotePlayerPrefab = remotePlayerPrefab;
             PlayerPrefab = playerPrefab;
             SpawnPoint = spawnPoint;

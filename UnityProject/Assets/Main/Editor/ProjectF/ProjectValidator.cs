@@ -4,10 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using ProjectF.Infrastructure;
+using ProjectF.Infrastructure.UI;
+using ProjectF.Presentation.Common;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using UnityEngine.U2D;
 using VContainer.Unity;
 
@@ -46,10 +49,12 @@ namespace ProjectF.Editor
     }
 
     /// <summary>
-    /// Stage 8 static checks (spec item 6) — callable from the setup window
+    /// Stage 8/9 static checks (spec items 6) — callable from the setup window
     /// AND from CI via BatchSetup.RunFullSetup/RunValidation (batch mode exits
     /// non-zero on failure). knowledge.md: generated content must be
     /// verifiable without a human in the loop.
+    /// Stage 9 additions: UIRoot in Persistent with the five layers + orders,
+    /// UI prefabs exist, localization CSVs cover every name_key (th/en).
     /// </summary>
     public static class ProjectValidator
     {
@@ -69,12 +74,29 @@ namespace ProjectF.Editor
             ["FarmPlot"] = "ProjectF.Presentation.FarmPlot.FarmPlotLifetimeScope",
         };
 
+        /// <summary>UILayer enum value → expected canvas sorting order.</summary>
+        private static readonly Dictionary<string, int> ExpectedLayerOrders = new()
+        {
+            ["World"] = (int)UILayer.World,
+            ["Hud"] = (int)UILayer.Hud,
+            ["Window"] = (int)UILayer.Window,
+            ["Modal"] = (int)UILayer.Modal,
+            ["Toast"] = (int)UILayer.Toast,
+        };
+
+        /// <summary>Mirrors HudPresenter.LevelExpThresholds — catches drift
+        /// between the client copy and data/level_exp.csv.</summary>
+        private static readonly int[] ExpectedLevelThresholds =
+            { 0, 50, 140, 300, 560, 950, 1500, 2300, 3400, 5000 };
+
         public static ValidationReport Validate()
         {
             var report = new ValidationReport();
             ValidateBuildSettings(report);
             ValidateScenes(report);
             ValidateItemIcons(report);
+            ValidateUiPrefabs(report);
+            ValidateLocalization(report);
             return report;
         }
 
@@ -251,6 +273,66 @@ namespace ProjectF.Editor
                     report.Warn("Persistent: PixelPerfectCamera upscaleRT is ON (spec: off).");
                 }
             }
+
+            // --- Stage 9: UIRoot instance + layers ---
+            UIRoot? uiRoot = scene.GetRootGameObjects()
+                .Select(go => go.GetComponent<UIRoot>())
+                .FirstOrDefault(u => u is { });
+            if (uiRoot is null)
+            {
+                report.Error("Persistent: no UIRoot found — run Generate UI Prefabs + Generate Scenes.");
+                return;
+            }
+
+            foreach (KeyValuePair<string, int> layer in ExpectedLayerOrders)
+            {
+                Transform child = uiRoot.transform.Find(layer.Key);
+                if (child is null)
+                {
+                    report.Error($"UIRoot: missing layer '{layer.Key}'.");
+                    continue;
+                }
+
+                Canvas? layerCanvas = child.GetComponent<Canvas>();
+                if (layerCanvas is null)
+                {
+                    report.Error($"UIRoot: layer '{layer.Key}' has no Canvas.");
+                }
+                else if (!layerCanvas.overrideSorting)
+                {
+                    report.Error($"UIRoot: layer '{layer.Key}' Canvas lacks overrideSorting.");
+                }
+                else if (layerCanvas.sortingOrder != layer.Value)
+                {
+                    report.Error($"UIRoot: layer '{layer.Key}' sorting order is " +
+                                 $"{layerCanvas.sortingOrder}, expected {layer.Value}.");
+                }
+            }
+
+            Canvas rootCanvas = uiRoot.GetComponent<Canvas>();
+            if (rootCanvas.renderMode != RenderMode.ScreenSpaceCamera)
+            {
+                report.Error($"UIRoot: render mode is {rootCanvas.renderMode}, " +
+                             "expected ScreenSpaceCamera (spec 9.1).");
+            }
+
+            CanvasScaler? scaler = uiRoot.GetComponent<CanvasScaler>();
+            if (scaler is null || scaler.uiScaleMode != CanvasScaler.ScaleMode.ScaleWithScreenSize ||
+                scaler.referenceResolution != new Vector2(320f, 180f))
+            {
+                report.Error("UIRoot: CanvasScaler must be ScaleWithScreenSize with a 320x180 " +
+                             "reference resolution (spec 9.1 pixel-perfect contract).");
+            }
+
+            if (uiRoot.GetComponentInChildren<Presentation.Common.UiInputDriver>(true) is null)
+            {
+                report.Error("UIRoot: UiInputDriver component missing (Escape / I / click-outside).");
+            }
+
+            if (uiRoot.GetComponentInChildren<Presentation.Common.LoadingOverlayBinder>(true) is null)
+            {
+                report.Error("UIRoot: LoadingOverlayBinder component missing (loading overlay).");
+            }
         }
 
         private static void ValidateGameplayScene(Scene scene, string name, ValidationReport report)
@@ -289,6 +371,22 @@ namespace ProjectF.Editor
             {
                 report.Error($"{name}: spawnPoint points into another scene " +
                              $"({spawnTransform.gameObject.scene.path}).");
+            }
+
+            // Stage 9: the per-scene HUD must be a bare tree (NO Canvas of its
+            // own — the Persistent UIRoot owns all canvases).
+            HudView? hud = scene.GetRootGameObjects()
+                .SelectMany(go => go.GetComponentsInChildren<HudView>(true))
+                .FirstOrDefault();
+            if (hud is null)
+            {
+                report.Error($"{name}: no HudView instance found — run Generate Scenes.");
+            }
+            else if (hud.GetComponentInParent<Canvas>(true) is { })
+            {
+                report.Warn($"{name}: HudView sits under a Canvas in the SCENE file — the " +
+                            "runtime re-parents it under UIRoot's HUD layer, but the saved " +
+                            "state should be a bare tree (run Generate Scenes).");
             }
         }
 
@@ -346,6 +444,103 @@ namespace ProjectF.Editor
                 if (AssetDatabase.LoadAssetAtPath<Sprite>(path) is null)
                 {
                     report.Error($"Item {id}: placeholder icon missing at {path} — run Generate Sprites.");
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // 4) Stage 9: UI prefabs + sprite registry + localization coverage
+        // ------------------------------------------------------------------
+
+        private static void ValidateUiPrefabs(ValidationReport report)
+        {
+            foreach (string name in new[] { "UIRoot", "Toast", "InventoryWindow", "ConfirmDialog" })
+            {
+                string path = UiPrefabGenerator.PrefabPath(name);
+                if (AssetDatabase.LoadAssetAtPath<GameObject>(path) is null)
+                {
+                    report.Error($"UI prefab missing: {path} — run Generate UI Prefabs.");
+                }
+            }
+
+            SpriteRegistryAsset? registry = AssetDatabase.LoadAssetAtPath<SpriteRegistryAsset>(
+                EditorPaths.SettingsRoot + "/SpriteRegistry.asset");
+            if (registry is null)
+            {
+                report.Error("SpriteRegistry.asset missing — run Generate UI Prefabs.");
+            }
+            else
+            {
+                if (registry.WhiteSquareSprite is null)
+                {
+                    report.Error("SpriteRegistry: WhiteSquareSprite not baked.");
+                }
+
+                if (registry.PanelSprite is null)
+                {
+                    report.Error("SpriteRegistry: PanelSprite not baked.");
+                }
+
+                List<(int Id, string Category)> items = PlaceholderSpriteGenerator.ReadItemTable();
+                int missing = items.Count(id => id.Id > 0 &&
+                    Array.IndexOf(registry.ItemIconIds, id.Id) < 0);
+                if (missing > 0)
+                {
+                    report.Error($"SpriteRegistry: {missing} item icon(s) not baked — " +
+                                 "run Generate UI Prefabs.");
+                }
+            }
+
+            // HUD drift check: HudPresenter's local threshold copy must match
+            // the shipped level_exp data (10 ints, cheap insurance).
+            int[] actual = HudPresenter.LevelExpThresholds;
+            if (!actual.SequenceEqual(ExpectedLevelThresholds))
+            {
+                report.Error("HudPresenter.LevelExpThresholds drifted from data/level_exp.csv " +
+                             "— sync the mirror or the exp bars lie.");
+            }
+        }
+
+        private static void ValidateLocalization(ValidationReport report)
+        {
+            List<string> required = UiPrefabGenerator.CollectRequiredKeys();
+            if (required.Count == 0)
+            {
+                report.Error("Localization: required key set is empty (data/item.csv unreadable?).");
+                return;
+            }
+
+            foreach (string lang in new[] { "th", "en" })
+            {
+                string path = $"{EditorPaths.LocalizationRoot}/{lang}.csv";
+                if (!File.Exists(path))
+                {
+                    report.Error($"Localization CSV missing: {path}.");
+                    continue;
+                }
+
+                var present = new HashSet<string>(StringComparer.Ordinal);
+                foreach (string raw in File.ReadAllLines(path))
+                {
+                    string line = raw.TrimStart('\uFEFF');
+                    if (line.Length == 0 || line.StartsWith("#"))
+                    {
+                        continue;
+                    }
+
+                    int comma = line.IndexOf(',');
+                    if (comma > 0)
+                    {
+                        present.Add(line[..comma].Trim());
+                    }
+                }
+
+                List<string> missing = required.Where(k => !present.Contains(k)).ToList();
+                if (missing.Count > 0)
+                {
+                    report.Error($"Localization {lang}.csv missing {missing.Count} key(s): " +
+                                 string.Join(", ", missing.Take(8)) +
+                                 (missing.Count > 8 ? "…" : string.Empty));
                 }
             }
         }
