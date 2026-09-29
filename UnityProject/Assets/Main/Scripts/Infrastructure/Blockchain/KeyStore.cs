@@ -26,15 +26,21 @@ namespace ProjectF.Infrastructure.Blockchain
             _settings = settings;
         }
 
-        /// <summary>The player key — loaded from disk or created on first run.</summary>
-        public PrivateKey LoadOrCreatePlayerKey()
+        /// <summary>The player key — loaded from disk or created on first run.
+        /// <paramref name="directory"/> overrides the default
+        /// Application.persistentDataPath/keys location — REQUIRED when called
+        /// off the main thread (e.g. from LibplanetClient's bootstrap Task.Run):
+        /// persistentDataPath itself is a main-thread-only Unity API.</summary>
+        public PrivateKey LoadOrCreatePlayerKey(string? directory = null)
         {
             if (_playerKey is { } existing)
             {
                 return existing;
             }
 
-            string dir = Path.Combine(Application.persistentDataPath, "keys");
+            // Default dir (main-thread callers only — see the doc comment).
+            string dir = directory
+                ?? Path.Combine(Application.persistentDataPath, "keys");
             Directory.CreateDirectory(dir);
             string instance = string.IsNullOrWhiteSpace(_settings.InstanceId)
                 ? "player1"

@@ -89,6 +89,7 @@ namespace ProjectF.Editor
                 "TASK_REWARD_TITLE", "TASK_REWARD_GOLD", "TASK_REWARD_EXP",
                 "KITCHEN_LOCKED", "KITCHEN_PICK_RECIPE", "KITCHEN_DETAIL", "KITCHEN_CRAFT",
                 "KITCHEN_RESULT_NORMAL", "KITCHEN_RESULT_GREAT", "EAT_DONE",
+                "KITCHEN_UNLOCK", "KITCHEN_UNLOCKED",
             });
 
             // Items (from data/item.csv — the Luban source of truth).
@@ -797,6 +798,14 @@ namespace ProjectF.Editor
                 Text lockedText = AddText(locked, "Text", Vector2.zero,
                     new Vector2(240f, 30f), TextAnchor.MiddleCenter, 10);
                 lockedText.text = "Locked";
+
+                // Stage 10.5: unlock CTA on the overlay itself — submit
+                // unlock_kitchen_v1 (flat gold fee) straight from the locked
+                // state; the StateWatcher re-entry clears the overlay on
+                // confirm.
+                Button unlock = AddButton(locked, "UnlockButton", new Vector2(0f, -28f),
+                    registry, new Color(0.55f, 0.45f, 0.20f));
+                unlock.GetComponentInChildren<Text>().text = "Unlock kitchen";
                 locked.SetActive(false);
 
                 var view = root.AddComponent<Presentation.AuntieHouse.CraftWindow>();
@@ -811,6 +820,7 @@ namespace ProjectF.Editor
                 so.FindProperty("craftLabel")!.objectReferenceValue =
                     craft.GetComponentInChildren<Text>();
                 so.FindProperty("lockedOverlay")!.objectReferenceValue = locked;
+                so.FindProperty("unlockButton")!.objectReferenceValue = unlock;
                 so.ApplyModifiedPropertiesWithoutUndo();
 
                 SavePrefab(root, "CraftWindow");

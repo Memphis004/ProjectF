@@ -132,6 +132,23 @@ namespace ProjectF.Presentation.Shop
         private int selectedItemId;
         private bool isBuying; // guard against double-submit
 
+        /// <summary>Maps a selected ITEM id to its SHOP ENTRY id — the chain's
+        /// buy_item_v1 takes the shop entry id, not the item id (found by the
+        /// chain E2E: every UI buy failed with "Shop entry 1001 is not in the
+        /// game tables" because the item id was submitted as the entry id).</summary>
+        private int ShopEntryIdFor(GeneratedTables table, int itemId)
+        {
+            foreach (ProjectF.Tables.ShopEntry entry in table.TbShop.DataList)
+            {
+                if (entry.ItemId == itemId)
+                {
+                    return entry.Id;
+                }
+            }
+
+            return 0;
+        }
+
         public ShopPresenter(
             ActionQueue actionQueue,
             StateWatcher stateWatcher,
@@ -362,7 +379,8 @@ namespace ProjectF.Presentation.Shop
                 {
                     bool ok = sellTab
                         ? await actions.SubmitAsync(new SellItemAction(selectedItemId, quantity))
-                        : await actions.SubmitAsync(new BuyItemAction(selectedItemId, quantity));
+                        : await actions.SubmitAsync(new BuyItemAction(
+                            ShopEntryIdFor(tables.Tables, selectedItemId), quantity));
 
                     if (ok)
                     {

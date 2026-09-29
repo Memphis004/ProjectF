@@ -12,9 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c7ad0ac03d72e3a4e98073e8f9d5f6eb, type: 3}
   m_Name: NetworkSettings
   m_EditorClassIdentifier: 
-  SeedPeers: []
-  ApvToken: 
-  GenesisPath: genesis.dat
+  SeedPeers:
+  - 0497ab538ac8618a651709396c8a6d8e47e9377510f26c6c8536bbac785beabd6988eed84cf7d2029ee31117c3e9ec4ece03ca76f718339bf36d139f221e58c39d,127.0.0.1,31236
+  ApvToken: 1/b5cd744Fe7399032304e90D13304a14b0505D431/MEUCIQDnNRYF9izuHF7UR2DshGYEYqoZ4O0epdUTGaRiUN4PigIgazQYmWn+zejo4XKKKrPlnOFQm8XQDfKwpS2Kqrdn8NI=
+  GenesisPath: C:/UnityProjects/ProjectF/.freebuff/chain/genesis.dat
   StorePath: '{persistentDataPath}/chain-{instanceId}'
   NodePort: 0
   SyncTimeoutSeconds: 120

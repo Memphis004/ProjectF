@@ -45,6 +45,9 @@ namespace ProjectF.Presentation.AuntieHouse
         [SerializeField]
         private GameObject lockedOverlay = default!;
 
+        [SerializeField]
+        private Button unlockButton = default!;
+
         public RectTransform RowTemplate => rowTemplate;
         public RectTransform RowList => rowList;
         public Text DetailLabel => detailLabel;
@@ -54,6 +57,7 @@ namespace ProjectF.Presentation.AuntieHouse
         public Button CraftButton => craftButton;
         public Text CraftLabel => craftLabel;
         public GameObject LockedOverlay => lockedOverlay;
+        public Button UnlockButton => unlockButton;
 
         public override bool IsModal => false;
 
@@ -123,6 +127,7 @@ namespace ProjectF.Presentation.AuntieHouse
         private int selectedRecipeId;
         private int portions = 1;
         private bool isCrafting;
+        private bool isUnlocking;
 
         public KitchenPresenter(
             ActionQueue actionQueue,
@@ -163,6 +168,7 @@ namespace ProjectF.Presentation.AuntieHouse
                 Rebuild();
             });
             window.CraftButton.onClick.AddListener(() => CraftAsync().Forget());
+            window.UnlockButton.onClick.AddListener(() => UnlockAsync().Forget());
 
             // First paint (see ShopPresenter/TaskBoardPresenter — the pooled
             // window needs an initial rebuild at acquisition).
@@ -216,9 +222,12 @@ namespace ProjectF.Presentation.AuntieHouse
             view.LockedOverlay.SetActive(!unlocked);
             if (!unlocked)
             {
-                // Spec: greyed out with "Talk to Auntie first".
+                // Spec: greyed out with "Talk to Auntie first". The unlock CTA
+                // sits ON the overlay; disabled mid-flight or while the
+                // snapshot has not arrived yet (can't verify affordability).
                 view.DetailLabel.text = loc.Get("KITCHEN_LOCKED");
                 view.CraftButton.interactable = false;
+                view.UnlockButton.interactable = snap is { } && !isUnlocking;
                 ClearRows();
                 return;
             }
@@ -290,6 +299,39 @@ namespace ProjectF.Presentation.AuntieHouse
 
             view.CraftLabel.text = loc.Get("KITCHEN_CRAFT");
             view.CraftButton.interactable = materialsOk && staminaOk && levelOk && !isCrafting;
+        }
+
+        /// <summary>Locked-state CTA: submits unlock_kitchen_v1 (flat gold
+        /// fee). The StateWatcher re-entry flips the locked overlay off on
+        /// the confirm.</summary>
+        private async UniTaskVoid UnlockAsync()
+        {
+            if (view is null || isUnlocking)
+            {
+                return;
+            }
+
+            isUnlocking = true;
+            try
+            {
+                IDisposable pending = toasts.ShowPending(loc.Get("TOAST_ACTION_PENDING"));
+                bool ok;
+                try
+                {
+                    ok = await actions.SubmitAsync(new ProjectF.Lib.Actions.UnlockKitchenAction());
+                }
+                finally
+                {
+                    pending.Dispose();
+                }
+
+                toasts.Success(loc.Get("KITCHEN_UNLOCKED"));
+            }
+            finally
+            {
+                isUnlocking = false;
+                Rebuild();
+            }
         }
 
         private async UniTaskVoid CraftAsync()

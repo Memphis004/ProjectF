@@ -102,3 +102,5 @@ KITCHEN_CRAFT,Cook
 KITCHEN_RESULT_NORMAL,Dish cooked
 KITCHEN_RESULT_GREAT,GREAT dish!
 EAT_DONE,Ate — stamina restored
+KITCHEN_UNLOCK,Unlock kitchen
+KITCHEN_UNLOCKED,Kitchen unlocked

@@ -73,7 +73,20 @@ namespace ProjectF.Infrastructure.Blockchain
         {
             try
             {
-                Status = await Task.Run(() => BootstrapCoreAsync(ct), ct);
+                // The core body touches Application.persistentDataPath (via
+                // KeyStore and ResolvedStorePath) — a main-thread-only Unity
+                // API. Pre-resolve ALL settings-derived paths HERE on the main
+                // thread, before the Task.Run hop (found by the E2E chain test:
+                // the throw silently degraded every session to offline
+                // read-only mode).
+                string storePath = _settings.ResolvedStorePath;
+                string genesisPath = _settings.ResolvedGenesisPath;
+                string hubAddress = _settings.HubAddress;
+                int nodePort = _settings.NodePort;
+                // Keep the canonical key location ({persistentDataPath}/keys)
+                // — resolved HERE, since the core runs off-thread.
+                string keysDir = System.IO.Path.Combine(Application.persistentDataPath, "keys");
+                Status = await Task.Run(() => BootstrapCoreAsync(storePath, genesisPath, hubAddress, nodePort, keysDir, ct), ct);
             }
             catch (OperationCanceledException)
             {
@@ -89,11 +102,12 @@ namespace ProjectF.Infrastructure.Blockchain
             return Status;
         }
 
-        private async Task<ChainStatus> BootstrapCoreAsync(CancellationToken ct)
+        private async Task<ChainStatus> BootstrapCoreAsync(
+            string storeDir, string genesisPath, string hubAddress, int nodePort,
+            string keysDir, CancellationToken ct)
         {
-            _playerKey = _keyStore.LoadOrCreatePlayerKey();
+            _playerKey = _keyStore.LoadOrCreatePlayerKey(keysDir);
 
-            string storeDir = _settings.ResolvedStorePath;
             Directory.CreateDirectory(storeDir);
 
             // --- Bootstrap files: peer.txt / apv.txt / genesis.dat (README
@@ -119,7 +133,7 @@ namespace ProjectF.Infrastructure.Blockchain
                 seedPeer = BoundPeer.ParsePeer(_settings.SeedPeers[0].Trim());
             }
 
-            Block genesis = LoadOrCreateGenesis(storeDir);
+            Block genesis = LoadOrCreateGenesis(storeDir, genesisPath);
 
             IBlockPolicy policy = BlockPolicySource.GetPolicy();
             IActionLoader actionLoader = TypedActionLoader.Create(typeof(PingAction).Assembly);
@@ -141,15 +155,23 @@ namespace ProjectF.Infrastructure.Blockchain
                 Enumerable.Empty<Libplanet.Types.Evidence.EvidenceBase>());
             _ = actionEvaluator.Evaluate(genesisPreEval, null);
 
+            // DefaultStore.GetCanonicalChainId() returns Guid.Empty (not
+            // null) on a fresh store — treat BOTH as "no chain yet" or the
+            // BlockChain ctor throws "does not contain chain id
+            // 00000000-…" (found by the chain E2E).
             Guid? chainId = store.GetCanonicalChainId();
-            if (chainId is null)
+            if (chainId is null || chainId.Value == Guid.Empty)
             {
                 // ListChainIds returns IEnumerable — deterministically take
                 // the first (Probe.cs adopt-existing-chain behavior).
                 chainId = store.ListChainIds().FirstOrDefault();
-                if (chainId is { })
+                if (chainId is { } && chainId.Value != Guid.Empty)
                 {
                     store.SetCanonicalChainId(chainId.Value);
+                }
+                else
+                {
+                    chainId = null; // fresh store → BlockChain.Create below
                 }
             }
 
@@ -181,7 +203,7 @@ namespace ProjectF.Infrastructure.Blockchain
                 apvOptions.AppProtocolVersion = AppProtocolVersion.FromToken(apvText);
             }
 
-            var hostOptions = new HostOptions("127.0.0.1", Array.Empty<IceServer>(), _settings.NodePort);
+            var hostOptions = new HostOptions("127.0.0.1", Array.Empty<IceServer>(), nodePort);
             var swarmOptions = new SwarmOptions
             {
                 StaticPeers = ImmutableHashSet.Create(seedPeer),
@@ -191,8 +213,11 @@ namespace ProjectF.Infrastructure.Blockchain
             ITransport transport = await NetMQTransport.Create(_playerKey, apvOptions, hostOptions);
             _swarm = new Swarm(_chain, _playerKey, transport, swarmOptions, consensusTransport: null);
 
-            _swarmCts = new CancellationTokenSource(
-                TimeSpan.FromSeconds(Math.Max(30, _settings.SyncTimeoutSeconds)));
+            // Gossip runs for the whole session — NO time-based auto-cancel:
+            // a timeout CTS here silently killed transport after
+            // SyncTimeoutSeconds (chain E2E lesson: client fell off the seed
+            // mid-session, peers 0). Shutdown happens via app teardown.
+            _swarmCts = new CancellationTokenSource();
             _ = Task.Run(() => _swarm.StartAsync(_swarmCts.Token), _swarmCts.Token);
 
             if (!_swarm.WaitForRunningAsync().Wait(TimeSpan.FromSeconds(15)))
@@ -223,8 +248,25 @@ namespace ProjectF.Infrastructure.Blockchain
             long before = _chain.Tip.Index;
             for (int pass = 0; pass < 3; pass++)
             {
-                await _swarm.PreloadAsync(
-                    (System.IProgress<Libplanet.Net.BlockSyncState>?)null, _swarmCts.Token);
+                // Per-pass budget (NOT a session token): a fresh node pulling
+                // a long chain exceeds any fixed session timeout — the old
+                // shared CTS aborted PreloadAsync mid-catch-up and killed the
+                // whole bootstrap (chain E2E lesson). Linked to ct so an
+                // external cancel (app teardown) still propagates; a pass
+                // budget expiry just resumes with the next pass.
+                using var preloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                preloadCts.CancelAfter(TimeSpan.FromSeconds(
+                    Math.Max(300, _settings.SyncTimeoutSeconds)));
+                try
+                {
+                    await _swarm.PreloadAsync(
+                        (System.IProgress<Libplanet.Net.BlockSyncState>?)null, preloadCts.Token);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    Debug.LogWarning("[chain] preload pass timed out — resuming catch-up.");
+                }
+
                 long after = _chain.Tip.Index;
                 if (after <= before)
                 {
@@ -326,9 +368,8 @@ namespace ProjectF.Infrastructure.Blockchain
             }, ct);
         }
 
-        private Block LoadOrCreateGenesis(string storeDir)
+        private Block LoadOrCreateGenesis(string storeDir, string genesisPath)
         {
-            string genesisPath = _settings.ResolvedGenesisPath;
             if (File.Exists(genesisPath))
             {
                 byte[] bytes = File.ReadAllBytes(genesisPath);

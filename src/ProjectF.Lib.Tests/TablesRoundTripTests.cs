@@ -53,7 +53,7 @@ public class TablesRoundTripTests
         Assert.Equal(3, tables.TbRecipe.DataList.Count);
         Assert.Equal(8, tables.TbRecipeMaterial.DataList.Count);
         Assert.Equal(3, tables.TbSeed.DataList.Count);
-        Assert.Equal(9, tables.TbShop.DataList.Count);
+        Assert.Equal(10, tables.TbShop.DataList.Count);
         Assert.Equal(6, tables.TbTask.DataList.Count);
         Assert.Equal(10, tables.TbLevelExp.DataList.Count);
     }

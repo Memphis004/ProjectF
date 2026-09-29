@@ -286,7 +286,7 @@ public class TableDataTests
     {
         var basePrice = LoadDataRows("item.csv").ToDictionary(r => int.Parse(r[0]), r => int.Parse(r[3]));
         var shop = LoadDataRows("shop.csv");
-        Assert.Equal(9, shop.Count);
+        Assert.Equal(10, shop.Count);
 
         foreach (var s in shop)
         {
