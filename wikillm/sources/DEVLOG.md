@@ -277,3 +277,135 @@ write ลงดิสก์ Unity **ไม่ error ว่า DLL เสีย**
 - ขั้นถัดไป: ทำตาม `UnityProject/SETUP.md` ใน Editor (scenes/prefabs/
   NetworkSettings asset/build settings) แล้ว smoke test แบบ offline
 
+---
+
+# 9. Stage 11.5 + 16 — bounded shutdown & multi-instance (ProjectF, 2026-09-29→30)
+
+รวมงาน 2 ชุด: **Stage 11.5** (teardown สถาปัตยกรรมใหม่) และ **Stage 16**
+(CLI override + build script) จบด้วยการทดสอบ **2 game instance เห็นกันข้าม
+instance สำเร็จ** ทั้งสองทิศทาง (commit `154e7d8`)
+
+## 9.1 Stage 11.5 — สถาปัตยกรรม shutdown ใหม่
+
+ปัญหาเดิม: ออก Play Mode แล้ว Editor ค้างที่ domain reload แบบเงียบ ๆ เพราะ
+background task (swarm loop, pollers, presence watcher) ยังวิ่งค้างและแตะ
+disposed resources
+
+**โครงสร้างใหม่** (ทั้งหมด tracked):
+- `BackgroundTaskRegistry` — registry เดียวของทุก background Task +
+  `Loop(name, interval, ct, body)` เป็น loop primitive เดียว (cancellation
+  check เป็นโครงสร้าง) + `WaitForExitAsync(task, timeout)` (Task.WhenAny +
+  Task.Delay — **Unity Mono ไม่มี `Task.WaitAsync`**)
+- บริการทุกตัว (LibplanetClient/StateWatcher/Monitor/ActionQueue/
+  PlayerHubClient) มี ordered teardown: cancel → await task ตัวเอง (bounded
+  3s) → dispose resource **ทีหลังสุด** + sync Dispose bridge ที่ `Task.Run`
+  ก่อน `.Wait` เสมอ (sync-context deadlock ถ้า await บน main thread)
+- `PlayModeShutdownGuard` (Editor, `[InitializeOnLoad]`) — hook ทั้ง
+  `ExitingPlayMode` + `beforeAssemblyReload` + `EnteredEditMode`, force-dispose
+  ผ่าน static `EditorShutdownHook` (bridge editor←runtime เพราะ asmdef ห้าม
+  อ้างกันข้าม) แล้วรายงาน task ที่ยังไม่ตาย พร้อมชื่อ + อายุ
+- ทดสอบ 31 EditMode tests เขียวหมด
+
+## 9.2 Stage 16 — CLI override + build script
+
+- `--instance-id <id>` / `--player-name <name>` parse ใน
+  `RootLifetimeScope.Configure` **ก่อน** build container → `InstanceId`
+  ไปขยาย `{instanceId}` ใน StorePath (`chain-player2`), `PlayerName` ใช้จริงใน
+  AppBootstrapper (เดิม hardcode `"Player"` ทั้งที่ settings มี field —
+  PlayerHubClient อ่านมาแต่ไม่เคยถูกใช้)
+- `ProjectF.Editor.BuildPlayer` (win-dev/win-release → `build/win-dev`) รัน
+  ผ่าน `-executeMethod` หรือ script-execute ใน Editor ที่เปิดอยู่ (batchmode
+  ชน project lock กับ Editor ที่เปิดอยู่ไม่ได้)
+- `tools/run-local.ps1`: pin validator key ที่ `{store}/privkey.txt` (key
+  เปลี่ยน = genesis เปลี่ยน = `InvalidGenesisBlockException` ทุก store เก่า),
+  รอ peer.txt จริง, auto-patch NetworkSettings.asset (UTF-8 **BOM** + CRLF,
+  PS 5.1 อ่านไม่ถูกถ้าไม่มี BOM)
+
+## 9.3 บัก presence ที่เจอตอนเทส 2 instance (แก้ 2 จุด)
+
+รอบแรก: P2 (exe, join ก่อน) เห็น player1 แต่ **Editor (join ทีหลัง) ไม่เห็น
+P2 ตลอดไป** — และทั้งสองฝั่ง log `remote joined` ของ **ตัวเอง**
+
+1. **Late-joiner blind** (client): `PresenceConnection.ConnectAsync` ทิ้ง
+   return ของ `JoinAsync` — ซึ่ง server ส่ง roster คนที่อยู่ก่อนหน้า
+   (`PresenceRegistry.OthersIn`) กลับมา ส่วน broadcast `OnJoin` เดินทางเฉพาะ
+   ไปยังคนอื่นใน group แล้ว → คน join ทีหลังไม่มีทางรู้จักคนเก่าเลย และ
+   `RemotePlayerRegistry.OnMove` อัปเดตเฉพาะ session ที่รู้จักแล้ว = มองไม่เห็น
+   ตลอดกาล แก้: ดึง roster จาก return แล้ว push เข้า receiver แบบ upsert
+   (**ไม่ใช้ Clear** — กัน race กับ OnJoin ที่บินสวนมาช่วง roster ยังบินอยู่)
+2. **Self-echo** (server): `Scene.All.OnJoin(_snapshot)` กระจายกลับถึงตัว
+   joiner ด้วย → registry spawn remote clone ของตัวเอง แก้:
+   `Scene.Except(new[]{ConnectionId}).OnJoin(...)` (⚠️ overload รับ
+   `IEnumerable<Guid>` ไม่ใช่ Guid เดียว — CS1503 ตอน build hub)
+
+หลังแก้: สองฝั่งเห็นกัน (`remote joined: P2` ใน Editor, `remote joined:
+Player <session ต่างจากตัวเอง>` ใน player2) + peers 2 บน chain ยืนยันซ้ำ
+หลัง commit ด้วย infra สด
+
+## 9.4 ปัญหาใหญ่ของวัน — hang หลัง "EnteredEditMode: all tracked tasks
+stopped cleanly"
+
+**อาการ:** ออก Play Mode, guard รายงาน clean ครบ, แล้ว "Reloading Domain"
+ค้าง 4+ นาที CPU idle — แปลว่ามีอะไร **untracked** ยังมีชีวิต
+
+**สืบพยานบทเรียนสำคัญ: `Process.GetCurrentProcess().Threads.Count` คืน 0 บน
+Unity Mono** — census แรกใช้มันแล้วเงียบทั้งไฟล์ ต้องเปลี่ยนไป walk Win32
+`CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD)` + `Thread32First/Next` (DllImport
+kernel32) ใน guard และ LibplanetClient ทั้งคู่
+
+**พยานหลังแก้ (chain connected, tip #2354):**
+
+```
+[shutdown-guard] ExitingPlayMode: teardown begin — threads: 226
+[chain] shutdown complete in 3073ms — threads 210→194.
+[shutdown-guard] ExitingPlayMode: teardown end — threads: 226→194
+[shutdown-guard] beforeAssemblyReload: teardown begin — threads: 165
+[shutdown-guard] beforeAssemblyReload: teardown end — threads: 165→165
+```
+
+**แก้:** `NetMQ.NetMQConfig.Cleanup(false)` ท้าย `LibplanetClient.DisposeAsync`
+(ห้าม block=true บน main thread; NetMQ.dll อยู่ใน Assets/Plugins/ProjectF
+import ได้จาก runtime) — สาเหตุคือ NetMQ poller/agent threads ของ
+NetMQTransport จอดใน native recv มองไม่เห็นจาก task registry และ
+`Swarm.StopAsync` หยุดเฉพาะ loop ฝั่ง Libplanet เอง (stack จาก seed log:
+`ReceiveMultipartMessageAsync` ค้างเป็นหลักฐาน)
+
+**ยืนยัน 3 enter/exit cycles (chain connected):** teardown drop คงที่ −32
+ทุกรอบ (228→196, 215→183, 212→180), reload-start flat (170/176/175),
+idle steady-state กลับมา **173 = baseline เป๊ะ** — ⚠️ กับดักการวัด: ค่า probe
+แรกหลัง reload ได้ 210 (wave ของ asset pipeline/Roslyn หลัง reload) probe
+ซ้ำโดยไม่เข้า play mode = 173 นิ่ง ต้องแยก noise ของ editor เองออกก่อนตัดสิน
+
+## 9.5 ปัญหาแวดล้อมที่เจอระหว่างทาง (บทเรียนสั้น)
+
+- **Editor hang ซ้ำตอนแก้ไฟล์ขณะ exit Play Mode** — domain reload ชนกับ
+  playmode transition 2 ครั้ง (force kill ครั้งเดียว, exit clean ได้ครั้ง
+  หนึ่ง) — งาน editor หนัก ๆ ควรรอออก play mode ก่อน save ไฟล์
+- **`dotnet run` หลายตัวชนกันเอง** — สตาร์ท seed ซ้ำระหว่าง build ค้าง →
+  build lock กันตาย ทั้งหมดจอด (hub ไม่ขึ้น 2.5+ นาที = สงสัย code ผิดก่อนเสมอ
+  แต่ครั้งนี้ lock ชนเอง) วิธีเดินทางที่ถูก: kill dotnet ทั้งหมด → `dotnet
+  build` foreground ให้จบ → ค่อย start detached ทีละตัว
+- **monitor loop ของ run-local.ps1 ตายพร้อม hub** — hub build fail หลังแก้
+  `Except` ผิด → runner เอา seed ตายไปด้วย ต้อง start hub แยกได้ (dotnet run
+  --project ตรง ๆ)
+- **MCP session หลุดหลัง domain reload** (`Session not found` / 503 ชั่วครั้ง
+  ครั้งเว้น) — CLI (`npx unity-mcp-cli run-tool ...`) ทนกว่า, และ config server
+  **auto-launch Editor ให้เอง** ถ้า Editor ตายขณะ MCP ยังรับ connection อยู่
+- bash บน Windows: `$var` ใน double-quoted PS command ถูก bash กลืนก่อน
+  (ใช้ single-quote ครอบ), และ heredoc/Add-Type ผ่าน bash multi-line เพี้ยน
+  ง่าย — สคริปต์ยาวเขียนลงไฟล์ดีกว่า inline
+- `ls`/`cat` คนละ cwd ตอนสลับ dir เร็ว ๆ ทำให้สรุปผิด ("chain dir ว่าง!" ทั้ง
+  ที่มี) — ใช้ path เต็มเมื่อตรวจของสำคัญ
+
+## 9.6 สถานะปลายทาง
+
+- 2-instance E2E ผ่านหลัง commit (fresh infra): Editor เห็น P2, P2 เห็น
+  Player (session ต่างกัน), 0 exceptions ทั้งสองฝั่ง, teardown clean,
+  IsPlaying false, ports ปลอด
+- Known noise ที่ยังไม่แก้: `[state] poll failed: get_isActiveAndEnabled ...
+  main thread` (StateWatcher.cs:100, warning ไม่ fatal — poll บน threadpool
+  แตะ Unity property), `BlockHeaderMessage ... 0 replies` จาก seed (normal
+  transport noise)
+- MCP `timeoutMs` เพิ่มเป็น 600000 ใน UserSettings config (สำหรับ build/test
+  ยาว)
+
