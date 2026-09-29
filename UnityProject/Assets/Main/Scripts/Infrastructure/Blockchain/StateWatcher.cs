@@ -46,6 +46,13 @@ namespace ProjectF.Infrastructure.Blockchain
         private string _lastTipHash = string.Empty;
         private AvatarSnapshot? _last;
 
+        /// <summary>Main-thread context captured at Start() — the poll loop
+        /// runs on the threadpool but its EVENTS feed UI subscribers that
+        /// touch MonoBehaviour state (isActiveAndEnabled, .text, SetActive…),
+        /// so raises are marshaled through this context (Stage 16 lesson:
+        /// "[state] poll failed: get_isActiveAndEnabled …main thread").</summary>
+        private SynchronizationContext? _mainContext;
+
         /// <summary>Recent tip hashes (newest last) for reorg detection.</summary>
         private readonly List<string> _recentTipHashes = new(TipHistorySize);
 
@@ -81,10 +88,14 @@ namespace ProjectF.Infrastructure.Blockchain
 
         public void Start()
         {
-            // PollOnce touches NO Unity main-thread-only API — it reads the
-            // client and raises C# events. The threadpool loop is therefore
-            // safe here, and it is cancellation-checked + tracked (Stage
-            // 11.5): teardown cancels the token and awaits the task.
+            // Capture the caller's context (play mode: UnitySynchronization-
+            // Context on the main thread) so event raises can hop back to it.
+            _mainContext = SynchronizationContext.Current;
+
+            // PollOnce reads the client + raises C# events. The heavy chain
+            // read stays on the threadpool (cancellation-checked + tracked,
+            // Stage 11.5), but the EVENT RAISES hop to the main thread via
+            // RaiseOnMain — UI subscribers touch MonoBehaviour state.
             _cts.Run(
                 "StateWatcher.Poll",
                 TimeSpan.FromMilliseconds(PollIntervalMs),
@@ -167,7 +178,7 @@ namespace ProjectF.Infrastructure.Blockchain
                         $"{Short(parentHash)} is neither the previous tip " +
                         $"{Short(_lastTipHash)} nor in recent history — re-reading " +
                         "all watched state from scratch.");
-                    OnReorg?.Invoke(depth);
+                    RaiseOnMain(() => OnReorg?.Invoke(depth));
                     _readTips.Clear();
                 }
             }
@@ -181,7 +192,7 @@ namespace ProjectF.Infrastructure.Blockchain
             if (tipMoved)
             {
                 RememberTip(tip, tipHash);
-                TipChanged?.Invoke(tip, tipHash);
+                RaiseOnMain(() => TipChanged?.Invoke(tip, tipHash));
             }
 
             AvatarSnapshot snapshot;
@@ -216,7 +227,25 @@ namespace ProjectF.Infrastructure.Blockchain
 
             if (stateMoved || tipMoved)
             {
-                AvatarUpdated?.Invoke(snapshot);
+                RaiseOnMain(() => AvatarUpdated?.Invoke(snapshot));
+            }
+        }
+
+        /// <summary>Raises a C# event on the captured main-thread context.
+        /// Direct call when already on that context or when there is none
+        /// (EditMode tests call PollOnce on the test thread — events stay
+        /// synchronous there). Posted raises keep FIFO order, so TipChanged
+        /// always precedes AvatarUpdated for the same poll.</summary>
+        private void RaiseOnMain(Action raise)
+        {
+            SynchronizationContext? context = _mainContext ?? SynchronizationContext.Current;
+            if (context is null || context == SynchronizationContext.Current)
+            {
+                raise();
+            }
+            else
+            {
+                context.Post(_ => raise(), null);
             }
         }
 
