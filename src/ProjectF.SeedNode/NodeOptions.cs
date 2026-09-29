@@ -38,4 +38,29 @@ public sealed class NodeOptions
     /// AppProtocolVersion.Token) every node in the network must present.
     /// Empty = self-sign version 1 (single-node dev mode).</summary>
     public string ApvToken { get; set; } = "";
+
+    // ---- Libplanet peer-tracking knobs (verified by reflection against the
+    // restored Libplanet.Net 5.5.3, not guessed). Null = fall back to the
+    // Libplanet default listed in the comment. Bound from appsettings.json
+    // TimeSpan strings ("00:00:15").
+
+    /// <summary>SwarmOptions.RefreshPeriod — how often the routing-table
+    /// refresh task runs. Libplanet default: 00:00:10.</summary>
+    public TimeSpan? RefreshPeriod { get; set; }
+
+    /// <summary>SwarmOptions.RefreshLifespan — a peer not refreshed for this
+    /// long gets a Ping at the next refresh pass; a failed ping removes it.
+    /// THIS is the dead-peer window: kill a peer and the seed keeps it for
+    /// up to RefreshLifespan + ping-fail time (60s default ≈ the observed
+    /// ~70s). Shortened to 15s for the dev/test network.
+    /// Libplanet default: 00:01:00.</summary>
+    public TimeSpan? RefreshLifespan { get; set; }
+
+    /// <summary>TimeoutOptions.MaxTimeout — ceiling for a message send/receive
+    /// round trip (Ping/broadcast included). Libplanet default: 00:02:30.</summary>
+    public TimeSpan? MaxTimeout { get; set; }
+
+    /// <summary>TimeoutOptions.DialTimeout — per-dial timeout; also bounds how
+    /// fast the removal Ping fails. Libplanet default: 00:00:01.</summary>
+    public TimeSpan? DialTimeout { get; set; }
 }

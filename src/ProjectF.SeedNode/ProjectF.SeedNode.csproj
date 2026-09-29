@@ -27,4 +27,11 @@
     <ProjectReference Include="..\ProjectF.Lib\ProjectF.Lib.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Program.cs loads appsettings.json from AppContext.BaseDirectory;
+         without CopyToOutputDirectory the defaults (RefreshLifespan 15s etc.)
+         never reach the runtime and Libplanet's 60s fallbacks stay active. -->
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

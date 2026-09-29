@@ -159,6 +159,41 @@ public sealed class SwarmRunner : IAsyncDisposable
                 .ToImmutableHashSet(),
         };
 
+        Console.WriteLine(
+            $"[options] RefreshPeriod={_options.RefreshPeriod?.ToString() ?? "(libplanet default)"} " +
+            $"RefreshLifespan={_options.RefreshLifespan?.ToString() ?? "(libplanet default)"} " +
+            $"MaxTimeout={_options.MaxTimeout?.ToString() ?? "(libplanet default)"} " +
+            $"DialTimeout={_options.DialTimeout?.ToString() ?? "(libplanet default)"}");
+
+        // Peer-tracking knobs (appsettings.json under SeedNode; null = keep
+        // the Libplanet default). RefreshLifespan is the dead-peer window —
+        // see NodeOptions.RefreshLifespan.
+        if (_options.RefreshPeriod is { } refreshPeriod)
+        {
+            swarmOptions.RefreshPeriod = refreshPeriod;
+        }
+
+        if (_options.RefreshLifespan is { } refreshLifespan)
+        {
+            swarmOptions.RefreshLifespan = refreshLifespan;
+        }
+
+        if (_options.MaxTimeout is { } maxTimeout || _options.DialTimeout is { } dialTimeout)
+        {
+            var timeoutOptions = new TimeoutOptions();
+            if (_options.MaxTimeout is { } mt)
+            {
+                timeoutOptions.MaxTimeout = mt;
+            }
+
+            if (_options.DialTimeout is { } dt)
+            {
+                timeoutOptions.DialTimeout = dt;
+            }
+
+            swarmOptions.TimeoutOptions = timeoutOptions;
+        }
+
         Console.WriteLine("[boot] creating transport…");
         ITransport transport = await NetMQTransport.Create(
             _nodeKey,
@@ -282,8 +317,10 @@ public sealed class SwarmRunner : IAsyncDisposable
             {
                 await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
                 int peers = Swarm?.Peers.Count ?? 0;
+                // Timestamped: peer-lifespan measurements need "Peers: 0"
+                // moments comparable against Libplanet's ERR lines.
                 Console.WriteLine(
-                    $"[status] Peers: {peers}, Tip: #{Chain.Tip.Index}");
+                    $"[{DateTime.Now:HH:mm:ss}][status] Peers: {peers}, Tip: #{Chain.Tip.Index}");
             }
             catch (OperationCanceledException)
             {

@@ -14,8 +14,35 @@ internal sealed class Program
         // Libplanet logs through Serilog's static Log.Logger. Without a sink,
         // every internal trace (ping/pong, peer discovery, block sync) is lost,
         // which makes swarm problems undiagnosable.
+        //
+        // Filter: NetMQTransport logs a TimeoutException/TaskCanceledException
+        // ERR line for EVERY message aimed at a peer that stopped responding
+        // (the dead-peer window before the routing table drops it) — pure
+        // noise at volume. ONLY cancel/timeout exceptions from that one source
+        // context are dropped; any other error (ChannelClosedException,
+        // serialization, send-failures with other causes, all other contexts)
+        // still logs.
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
+            .Filter.ByExcluding(evt =>
+            {
+                if (evt.Properties.TryGetValue("SourceContext", out Serilog.Events.LogEventPropertyValue? sc) &&
+                    sc is Serilog.Events.ScalarValue { Value: string ctx } &&
+                    ctx != "Libplanet.Net.Transports.NetMQTransport")
+                {
+                    return false;
+                }
+
+                for (Exception? ex = evt.Exception; ex is not null; ex = ex.InnerException)
+                {
+                    if (ex is TaskCanceledException or OperationCanceledException or TimeoutException)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            })
             .WriteTo.Console(
                 outputTemplate:
                 "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}")
