@@ -1,4 +1,4 @@
-%YAML 1.1
+﻿%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
 MonoBehaviour:
@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: NetworkSettings
   m_EditorClassIdentifier: 
   SeedPeers:
-  - 0497ab538ac8618a651709396c8a6d8e47e9377510f26c6c8536bbac785beabd6988eed84cf7d2029ee31117c3e9ec4ece03ca76f718339bf36d139f221e58c39d,127.0.0.1,31236
-  ApvToken: 1/b5cd744Fe7399032304e90D13304a14b0505D431/MEUCIQDnNRYF9izuHF7UR2DshGYEYqoZ4O0epdUTGaRiUN4PigIgazQYmWn+zejo4XKKKrPlnOFQm8XQDfKwpS2Kqrdn8NI=
+  - 0453d8f9619fad0da36d3b4995637fa7669db32259445d8ac2bbd61400f127ee75e4e479731234278e92636e2272bf8e14a2ec202512131a4ef42c6ce0ccf0d0c7,127.0.0.1,31237
+  ApvToken: 1/89D734A6951396e563A6c60B9B7600b7597AE1b1/MEQCIHmV.vEeiB2iqo.J1y0mhBCIfTLVI7qgIYefc0GM8Wl6AiAbI5CEr1mfeIJZ8.PE7hwwnOQijRyqrCu59pD4lhf9Ew==
   GenesisPath: C:/UnityProjects/ProjectF/.freebuff/chain/genesis.dat
   StorePath: '{persistentDataPath}/chain-{instanceId}'
   NodePort: 0

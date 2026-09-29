@@ -222,13 +222,23 @@ namespace ProjectF.Editor
                 textMesh.fontSize = 24;
                 textMesh.characterSize = 0.05f; // ≈1.2 world units tall
                 textMesh.color = Color.white;
-                nameTagGo.AddComponent<NameTagView>();
+                NameTagView nameTagView = nameTagGo.AddComponent<NameTagView>();
+
+                // Wire the view's serialized references HERE (Stage 11.5
+                // follow-up: leaving them unassigned made every remote join
+                // spam UnassignedReferenceException from SetPlayerName).
 
                 var view = go.AddComponent<RemotePlayerView>();
                 var so = new SerializedObject(view);
                 so.FindProperty("spriteRenderer")!.objectReferenceValue = renderer;
                 so.FindProperty("nameTag")!
-                    .objectReferenceValue = nameTagGo.GetComponent<NameTagView>();
+                    .objectReferenceValue = nameTagView;
+
+                var nameTagSo = new SerializedObject(nameTagView);
+                nameTagSo.FindProperty("label")!.objectReferenceValue = textMesh;
+                nameTagSo.FindProperty("follow")!.objectReferenceValue = go.transform;
+                nameTagSo.ApplyModifiedPropertiesWithoutUndo();
+
                 so.ApplyModifiedPropertiesWithoutUndo();
 
                 SavePrefab(go, "RemotePlayer");

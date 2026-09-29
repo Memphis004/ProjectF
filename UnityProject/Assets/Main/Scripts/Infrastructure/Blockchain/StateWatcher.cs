@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Bencodex.Types;
 using Libplanet.Crypto;
 using ProjectF.Lib;
 using ProjectF.Lib.States;
 using UnityEngine;
+
+using ProjectF.Infrastructure;
 
 // ReSharper disable CheckNamespace
 namespace ProjectF.Infrastructure.Blockchain
@@ -36,7 +39,8 @@ namespace ProjectF.Infrastructure.Blockchain
 
         private readonly ILibplanetClient _client;
         private readonly KeyStore _keyStore;
-        private CancellationTokenSource? _cts;
+        private readonly BackgroundTaskRegistry _registry;
+        private readonly BackedUpCts _cts;
 
         private long _lastTip = -1;
         private string _lastTipHash = string.Empty;
@@ -63,47 +67,69 @@ namespace ProjectF.Infrastructure.Blockchain
         public AvatarSnapshot? Current => _last;
 
         public StateWatcher(ILibplanetClient client, KeyStore keyStore)
+            : this(client, keyStore, new BackgroundTaskRegistry())
+        {
+        }
+
+        public StateWatcher(ILibplanetClient client, KeyStore keyStore, BackgroundTaskRegistry registry)
         {
             _client = client;
             _keyStore = keyStore;
+            _registry = registry;
+            _cts = new BackedUpCts(registry);
         }
 
         public void Start()
         {
-            if (_cts is { })
-            {
-                return; // already running
-            }
+            // PollOnce touches NO Unity main-thread-only API — it reads the
+            // client and raises C# events. The threadpool loop is therefore
+            // safe here, and it is cancellation-checked + tracked (Stage
+            // 11.5): teardown cancels the token and awaits the task.
+            _cts.Run(
+                "StateWatcher.Poll",
+                TimeSpan.FromMilliseconds(PollIntervalMs),
+                () =>
+                {
+                    try
+                    {
+                        PollOnce();
+                    }
+                    catch (Exception ex)
+                    {
+                        // Never let the watch loop die — log and keep polling.
+                        Debug.LogWarning($"[state] poll failed: {ex.Message}");
+                    }
 
-            _cts = new CancellationTokenSource();
-            RunLoopAsync(_cts.Token).Forget();
+                    return Task.CompletedTask;
+                });
+        }
+
+        /// <summary>Spec 2 order: cancel → await the poll task (bounded) →
+        /// nothing else to dispose (the watcher owns no unmanaged resources).
+        /// Awaits ONLY this watcher's task — never another service's loop.</summary>
+        public async Task DisposeAsync()
+        {
+            _cts.Cancel();
+            // ConfigureAwait(false): the sync Dispose bridge blocks the main
+            // thread — a sync-context continuation would deadlock until the
+            // timeout (the 14s EditMode repro). Finish on the threadpool.
+            await _cts.AwaitOwnedAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+            _cts.Dispose();
         }
 
         public void Dispose()
         {
-            _cts?.Cancel();
-            _cts?.Dispose();
-            _cts = null;
-        }
-
-        private async UniTaskVoid RunLoopAsync(CancellationToken ct)
-        {
-            while (!ct.IsCancellationRequested)
+            // Sync bridge (tests / VContainer teardown): bounded — never
+            // blocks forever (spec 2). Task.Run FIRST: awaiting on the main
+            // thread captures the Unity sync context, which is blocked in
+            // .Wait — deadlock until the timeout (the EditMode 14s repro).
+            try
             {
-                try
-                {
-                    await UniTask.Delay(PollIntervalMs, cancellationToken: ct);
-                    PollOnce();
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    // Never let the watch loop die — log and keep polling.
-                    Debug.LogWarning($"[state] poll failed: {ex.Message}");
-                }
+                Task.Run(() => DisposeAsync()).Wait(TimeSpan.FromSeconds(4));
+            }
+            catch
+            {
+                // Shutdown must never throw into teardown.
             }
         }
 

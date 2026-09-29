@@ -44,8 +44,11 @@ public sealed class PlayerHub : StreamingHubBase<IPlayerHub, IPlayerHubReceiver>
         Scene = await Group.AddAsync(GroupName(request.SceneId));
         _registry.Upsert(_snapshot);
 
-        // Tell everyone already in the scene, then hand the joiner the roster.
-        Scene.All.OnJoin(_snapshot);
+        // Tell everyone ALREADY in the scene (Except: the joiner itself gets
+        // the roster via the JoinAsync return — a self-echo would make the
+        // registry spawn a remote clone of the local player), then hand the
+        // joiner the roster of everyone who joined earlier.
+        Scene.Except(new[] { ConnectionId }).OnJoin(_snapshot);
         return _registry.OthersIn(request.SceneId, _sessionId);
     }
 
@@ -100,7 +103,7 @@ public sealed class PlayerHub : StreamingHubBase<IPlayerHub, IPlayerHubReceiver>
         Scene = await Group.AddAsync(GroupName(sceneId));
         _sceneId = sceneId;
         _registry.Upsert(_snapshot);
-        Scene.All.OnJoin(_snapshot);
+        Scene.Except(new[] { ConnectionId }).OnJoin(_snapshot);
 
         // Roster of the new scene goes to the CALLER ONLY: JoinAsync returns it
         // as its result, but ChangeSceneAsync has no return value, so it is

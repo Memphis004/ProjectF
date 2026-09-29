@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Libplanet.Action;
 using UnityEngine;
@@ -89,6 +90,13 @@ namespace ProjectF.Infrastructure.Blockchain
 
         private bool _draining;
 
+        // Stage 11.5: in-flight drain task (if any) + shutdown token. The
+        // drain loop checks the token between items, so DisposeAsync can stop
+        // it deterministically instead of letting StageAndWaitAsync run its
+        // full 30s budget into a disposed client.
+        private UniTask? _drainTask;
+        private CancellationTokenSource? _queueCts;
+
         private sealed class QueueItem
         {
             public QueueItem(PendingAction tracked, UniTaskCompletionSource<(bool, string)> tcs)
@@ -152,6 +160,12 @@ namespace ProjectF.Infrastructure.Blockchain
         public void Dispose()
         {
             // Queue dies with the session by design (spec: persist nothing).
+            // Stage 11.5: also cancel the SHUTDOWN token so an in-flight
+            // StageAndWaitAsync/UniTask.Delay aborts instead of polling into
+            // a disposed client (action confirmation polling was the second
+            // live loop at teardown in the Stage 11.5 repro).
+            _queueCts?.Cancel();
+
             foreach (QueueItem item in _queue)
             {
                 item.Completion.TrySetResult((false, "cancelled"));
@@ -159,6 +173,51 @@ namespace ProjectF.Infrastructure.Blockchain
 
             _queue.Clear();
             _pending.Clear();
+            _queueCts?.Dispose();
+            _queueCts = null;
+            _drainTask = null;
+        }
+
+        /// <summary>Stage 11.5 (spec 2, applied to the queue): cancel the
+        // shutdown token, resolve every queued item, THEN await the in-flight
+        // drain task with a bounded timeout — the running item's
+        // StageAndWaitAsync observes the token via its ct and aborts.</summary>
+        public async Task DisposeAsync()
+        {
+            _queueCts?.Cancel();
+
+            foreach (QueueItem item in _queue)
+            {
+                item.Completion.TrySetResult((false, "cancelled"));
+            }
+
+            _queue.Clear();
+
+            UniTask? drain = _drainTask;
+            if (drain is { } d)
+            {
+                // Bounded wait on the in-flight drain: the running item's
+                // StageAndWaitAsync observes the queue CTS via its linked ct
+                // and aborts; 3s is the "never block forever" ceiling.
+                bool stopped = await BackgroundTaskRegistry
+                    .WaitForExitAsync(d.AsTask(), TimeSpan.FromSeconds(3));
+                if (!stopped)
+                {
+                    Debug.LogWarning(
+                        "[actions] in-flight action drain did not stop within 3s — abandoned.");
+                }
+            }
+
+            _pending.Clear();
+            _queueCts?.Dispose();
+            _queueCts = null;
+            _drainTask = null;
+        }
+
+        private CancellationToken GetShutdownToken()
+        {
+            _queueCts ??= new CancellationTokenSource();
+            return _queueCts.Token;
         }
 
         /// <summary>
@@ -266,7 +325,9 @@ namespace ProjectF.Infrastructure.Blockchain
             };
             _queue.Enqueue(item);
 
-            await DrainAsync();
+            UniTask drain = DrainAsync();
+            _drainTask = drain;
+            await drain;
 
             (bool ok, string reason) = await item.Completion.Task;
             _pending.Remove(tracked);
@@ -311,6 +372,14 @@ namespace ProjectF.Infrastructure.Blockchain
 
                 try
                 {
+                    // Shutdown check per item (spec 1: no unbounded work
+                    // without a cancellation check).
+                    if (_queueCts is { } qc && qc.IsCancellationRequested)
+                    {
+                        ct = CancellationTokenSource
+                            .CreateLinkedTokenSource(ct, qc.Token).Token;
+                    }
+
                     ct.ThrowIfCancellationRequested();
 
                     // PlainValue is typed IValue; the interface seam expects

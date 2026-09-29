@@ -43,6 +43,25 @@ internal sealed class Program
                 .ToArray();
         }
 
+        // run-local.ps1 helper: print a fresh key hex and exit (the script
+        // pins it into {store}/privkey.txt so genesis never drifts).
+        if (args.Contains("--SeedNode:GenerateKeyHexOnly", StringComparer.OrdinalIgnoreCase))
+        {
+            // ByteArray is ImmutableArray<byte> — copy via indexer (same
+            // pattern as the Unity KeyStore; ToArray() depends on which
+            // System.Collections.Immutable the compile resolves).
+            System.Collections.Immutable.ImmutableArray<byte> raw = new PrivateKey().ByteArray;
+            var bytes = new byte[raw.Length];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = raw[i];
+            }
+
+            // Convert.ToHexString (net8) — lowercase to match key file format.
+            Console.WriteLine(Convert.ToHexString(bytes).ToLowerInvariant());
+            return 0;
+        }
+
         // Key: config → ephemeral.
         PrivateKey nodeKey = string.IsNullOrWhiteSpace(options.PrivateKeyHex)
             ? new PrivateKey()

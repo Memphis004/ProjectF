@@ -30,6 +30,7 @@ namespace ProjectF.Infrastructure
         private readonly IToastService _toasts;
         private readonly IPresenceClient _presence;
         private readonly SceneRouter _sceneRouter;
+        private readonly NetworkSettings _settings;
 
         public AppBootstrapper(
             UnityTableService tables,
@@ -39,7 +40,8 @@ namespace ProjectF.Infrastructure
             ChainConnectionMonitor connectionMonitor,
             IToastService toasts,
             IPresenceClient presence,
-            SceneRouter sceneRouter)
+            SceneRouter sceneRouter,
+            NetworkSettings settings)
         {
             _tables = tables;
             _chain = chain;
@@ -49,6 +51,7 @@ namespace ProjectF.Infrastructure
             _toasts = toasts;
             _presence = presence;
             _sceneRouter = sceneRouter;
+            _settings = settings;
         }
 
         public async UniTask StartAsync(CancellationToken cancellation)
@@ -72,8 +75,11 @@ namespace ProjectF.Infrastructure
             //    gameplay. PlayerHubClient degrades to Offline status;
             //    SceneRouter checks IsOnline per hop, so even a late
             //    recovery works. Forget() swallows connectivity errors.
+            // Stage 16: the configured display name (possibly --player-name
+            // overridden) instead of the old hardcoded "Player" — two
+            // instances must be distinguishable on the roster.
             _presence
-                .ConnectAsync("Player", (int)SceneId.Village, 0f, 0f, cancellation)
+                .ConnectAsync(_settings.PlayerName, (int)SceneId.Village, 0f, 0f, cancellation)
                 .Forget(ex => Debug.LogWarning($"[boot] presence connect failed: {ex}"));
 
             // 5. Route to the first gameplay scene (additively on top of

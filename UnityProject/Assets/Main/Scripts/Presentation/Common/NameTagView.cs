@@ -21,12 +21,18 @@ namespace ProjectF.Presentation.Common
 
         private void Awake()
         {
-            if (label is null)
+            // NOTE: NEVER use `is {{ }}` / `is null` on UnityEngine.Object
+            // fields — an unassigned serialized reference is a FAKE null (a
+            // managed wrapper around a missing object), so pattern matching
+            // sees it as non-null and the next use throws
+            // UnassignedReferenceException (found via the presence broadcast
+            // spam). The overloaded == / != operators handle it correctly.
+            if (label == null)
             {
                 label = GetComponent<TextMesh>();
             }
 
-            if (follow is null)
+            if (follow == null)
             {
                 follow = transform.parent;
             }
@@ -35,14 +41,15 @@ namespace ProjectF.Presentation.Common
         private void LateUpdate()
         {
             // Stay upright + above the player regardless of parent flip/scale.
-            Vector3 basePosition = follow is { } ? follow.position : transform.position;
+            // (`!= null` — see the Awake comment about Unity's fake nulls.)
+            Vector3 basePosition = follow != null ? follow.position : transform.position;
             transform.SetPositionAndRotation(
                 basePosition + offset, Quaternion.identity);
         }
 
         public void SetPlayerName(string playerName)
         {
-            if (label is { })
+            if (label != null)
             {
                 label.text = playerName;
             }

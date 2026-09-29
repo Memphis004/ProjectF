@@ -19,11 +19,18 @@ namespace ProjectF.Infrastructure.Blockchain
     {
         private readonly NetworkSettings _settings;
 
+        // Stage 11.5: resolved ONCE in the ctor on the main thread — the
+        // bootstrap Task.Run body may not touch Unity APIs, and teardown can
+        // run when the main thread is no longer serving Unity API calls
+        // (persistentDataPath throws then).
+        private readonly string _defaultKeysDir;
+
         private PrivateKey? _playerKey;
 
         public KeyStore(NetworkSettings settings)
         {
             _settings = settings;
+            _defaultKeysDir = Path.Combine(Application.persistentDataPath, "keys");
         }
 
         /// <summary>The player key — loaded from disk or created on first run.
@@ -38,9 +45,8 @@ namespace ProjectF.Infrastructure.Blockchain
                 return existing;
             }
 
-            // Default dir (main-thread callers only — see the doc comment).
-            string dir = directory
-                ?? Path.Combine(Application.persistentDataPath, "keys");
+            // Default dir was resolved on the main thread in the ctor.
+            string dir = directory ?? _defaultKeysDir;
             Directory.CreateDirectory(dir);
             string instance = string.IsNullOrWhiteSpace(_settings.InstanceId)
                 ? "player1"
@@ -86,8 +92,7 @@ namespace ProjectF.Infrastructure.Blockchain
             string instance = string.IsNullOrWhiteSpace(_settings.InstanceId)
                 ? "player1"
                 : _settings.InstanceId;
-            return File.Exists(Path.Combine(
-                Application.persistentDataPath, "keys", $"{instance}.hex"));
+            return File.Exists(Path.Combine(_defaultKeysDir, $"{instance}.hex"));
         }
 
         private static byte[] ParseHex(string hex)

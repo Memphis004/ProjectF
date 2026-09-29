@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using ProjectF.Shared.Presence;
 using UnityEngine;
@@ -149,6 +150,41 @@ namespace ProjectF.Infrastructure.Network
             Status = PresenceStatus.Offline;
         }
 
-        public void Dispose() => _connection.Dispose();
+        /// <summary>Stage 11.5 (spec 2, presence side): ordered async teardown
+        /// — leave the hub politely, then the connection's ordered shutdown
+        /// (cancel watcher → await → dispose channel) runs inside
+        /// PresenceConnection.DisposeCoreAsync. Awaited, never
+        /// fire-and-forget.</summary>
+        public async Task DisposeAsync()
+        {
+            try
+            {
+                await _connection.LeaveAsync();
+            }
+            catch
+            {
+                // Best effort — a dead hub must not block shutdown.
+            }
+
+            await _connection.DisposeAsync();
+            Status = PresenceStatus.Offline;
+        }
+
+        public void Dispose()
+        {
+            // Sync bridge for VContainer teardown: bounded (4s) — the
+            // EditMode shutdown test proves this returns in well under 5s
+            // with no server reachable. Task.Run FIRST: awaiting on the main
+            // thread captures the Unity sync context, which is blocked in
+            // .Wait — deadlock until the timeout (the EditMode 14s repro).
+            try
+            {
+                Task.Run(() => DisposeAsync()).Wait(TimeSpan.FromSeconds(4));
+            }
+            catch
+            {
+                // Shutdown must never throw into teardown.
+            }
+        }
     }
 }

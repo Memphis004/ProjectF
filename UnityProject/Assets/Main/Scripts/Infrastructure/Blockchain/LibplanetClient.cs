@@ -41,18 +41,34 @@ namespace ProjectF.Infrastructure.Blockchain
     /// them from the main thread deadlocks, per Probe.cs). Public entry points
     /// hop to the threadpool and hand results back to UniTask callers.
     /// </summary>
-    public sealed class LibplanetClient : ILibplanetClient
+    /// <summary>NOTE (Stage 11.5, found by the Play-Mode shutdown guard):
+    /// this class MUST declare IDisposable — the method alone is not enough.
+    /// VContainer tracks teardown via the INTERFACE, and the Editor guard
+    /// casts EditorShutdownHook.Chain to IDisposable; without the declaration
+    /// BOTH skip disposing this client → the swarm task survived teardown →
+    /// the original domain-reload hang.</summary>
+    public sealed class LibplanetClient : ILibplanetClient, IDisposable
     {
         // NOTE: 'Dictionary' below always means Bencodex.Types.Dictionary
         // (fully qualified at the interface seam to avoid the
         // System.Collections.Generic collision).
         private readonly NetworkSettings _settings;
         private readonly KeyStore _keyStore;
+        private readonly BackgroundTaskRegistry _registry;
+        private readonly BackedUpCts _cts;
 
         private PrivateKey? _playerKey;
         private BlockChain? _chain;
         private Swarm? _swarm;
-        private CancellationTokenSource? _swarmCts;
+        private IStore? _store;
+        private TrieStateStore? _stateStore;
+
+        // Stage 11.5: every background task this client starts is tracked so
+        // shutdown can cancel → await (bounded) → dispose. The swarm task is
+        // ALSO held here: Swarm.StartAsync only completes when the swarm has
+        // fully stopped, so it is the canonical "did the gossip really end"
+        // signal (see DisposeAsync — it is the leak that hung domain reloads).
+        private Task? _swarmTask;
 
         /// <summary>Highest peer tip observed this session (Volatile long —
         /// written by the sampler task, read by UI); 0 when unknown.</summary>
@@ -90,10 +106,13 @@ namespace ProjectF.Infrastructure.Blockchain
 
         public string PlayerAddress => _playerKey?.Address.ToString() ?? string.Empty;
 
-        public LibplanetClient(NetworkSettings settings, KeyStore keyStore)
+        public LibplanetClient(
+            NetworkSettings settings, KeyStore keyStore, BackgroundTaskRegistry registry)
         {
             _settings = settings;
             _keyStore = keyStore;
+            _registry = registry;
+            _cts = new BackedUpCts(registry);
         }
 
         public async Task<ChainStatus> BootstrapAsync(CancellationToken ct)
@@ -133,6 +152,7 @@ namespace ProjectF.Infrastructure.Blockchain
             string storeDir, string genesisPath, string hubAddress, int nodePort,
             string keysDir, CancellationToken ct)
         {
+            CancellationToken shutdown = _cts.Token;
             _playerKey = _keyStore.LoadOrCreatePlayerKey(keysDir);
 
             Directory.CreateDirectory(storeDir);
@@ -209,6 +229,8 @@ namespace ProjectF.Infrastructure.Blockchain
                 : BlockChain.Create(
                     policy, new VolatileStagePolicy(), store, stateStore, genesis,
                     actionEvaluator);
+            _store = store;
+            _stateStore = stateStore;
 
             // --- No seed configured: solo local chain (create_avatar etc. all
             // work; there is just nobody to sync with).
@@ -243,16 +265,61 @@ namespace ProjectF.Infrastructure.Blockchain
             // Gossip runs for the whole session — NO time-based auto-cancel:
             // a timeout CTS here silently killed transport after
             // SyncTimeoutSeconds (chain E2E lesson: client fell off the seed
-            // mid-session, peers 0). Shutdown happens via app teardown.
-            _swarmCts = new CancellationTokenSource();
-            _ = Task.Run(() => _swarm.StartAsync(_swarmCts.Token), _swarmCts.Token);
+            // mid-session, peers 0). Cancellation comes from the ONE shared
+            // shutdown source (_cts); the task is TRACKED so teardown awaits
+            // it before disposing the store (spec 1 + 2).
+            Task swarmTask = _registry.Run(
+                "LibplanetClient.Swarm",
+                async () =>
+                {
+                    try
+                    {
+                        await _swarm!.StartAsync(shutdown);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected during teardown — completion is the signal
+                        // that gossip/polling really ended.
+                    }
+                });
+            _swarmTask = swarmTask;
 
             // Sample the seed's tip in the background so the UI can render an
             // honest "N / M" during catch-up. Pure display — a failure here
             // never affects sync (PreloadAsync decides what to pull).
-            _ = Task.Run(() => PeerTipSamplerAsync(_swarmCts.Token));
+            // Loop with a cancellation check per iteration (spec 1).
+            _ = _registry.Run(
+                "LibplanetClient.PeerTipSampler",
+                () => _registry.Loop(
+                    "LibplanetClient.PeerTipSampler",
+                    TimeSpan.FromSeconds(1),
+                    shutdown,
+                    async () =>
+                    {
+                        Swarm? swarm = _swarm;
+                        if (swarm is { } && swarm.Running)
+                        {
+                            IEnumerable<Libplanet.Net.PeerChainState> states =
+                                await swarm.GetPeerChainStateAsync(TimeSpan.FromSeconds(5), shutdown);
+                            long best = 0;
+                            foreach (Libplanet.Net.PeerChainState state in states)
+                            {
+                                best = Math.Max(best, state.TipIndex);
+                            }
 
-            if (!_swarm.WaitForRunningAsync().Wait(TimeSpan.FromSeconds(15)))
+                            if (best > 0)
+                            {
+                                Volatile.Write(ref _peerTipTarget, best);
+                            }
+                        }
+                    }));
+
+            // Stage 11.5 (spec 3): WaitForRunningAsync is an UNBOUNDED wait —
+            // a wedged transport hangs bootstrap forever. Bound it to 15s.
+            Task running = _swarm.WaitForRunningAsync();
+            bool startedInTime = await BackgroundTaskRegistry
+                .WaitForExitAsync(running, TimeSpan.FromSeconds(15));
+            if (!startedInTime)
             {
                 Debug.LogWarning("[chain] swarm transport did not start in 15s — continuing offline.");
                 Status = ChainStatus.Offline;
@@ -265,11 +332,41 @@ namespace ProjectF.Infrastructure.Blockchain
                     new[] { seedPeer },
                     TimeSpan.FromSeconds(5),
                     3,
-                    _swarmCts.Token);
+                    shutdown);
             }
             catch (Exception ex)
             {
                 Debug.LogWarning($"[chain] bootstrap incomplete — {ex.Message}");
+            }
+
+            // Stage 11.5 (spec 3): zero reachable peers after a bounded window
+            // → give up and continue OFFLINE; never retry discovery forever in
+            // the background without honouring cancellation.
+            if (PeerCount == 0)
+            {
+                DateTimeOffset offlineDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+                while (PeerCount == 0 && DateTimeOffset.UtcNow < offlineDeadline)
+                {
+                    try
+                    {
+                        await Task.Delay(250, shutdown);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Status = ChainStatus.Offline;
+                        return Status;
+                    }
+                }
+
+                if (PeerCount == 0)
+                {
+                    Debug.LogWarning(
+                        "[chain] no reachable peer within 5s of bootstrap — continuing OFFLINE " +
+                        "(swarm stays up; a later connection is picked up by the sampler). Status=" +
+                        ChainStatus.Offline);
+                    Status = ChainStatus.Offline;
+                    return Status;
+                }
             }
 
             // Bulk catch-up: gossip only carries new blocks; a fresh node must
@@ -286,7 +383,7 @@ namespace ProjectF.Infrastructure.Blockchain
                 // whole bootstrap (chain E2E lesson). Linked to ct so an
                 // external cancel (app teardown) still propagates; a pass
                 // budget expiry just resumes with the next pass.
-                using var preloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                using var preloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct, shutdown);
                 preloadCts.CancelAfter(TimeSpan.FromSeconds(
                     Math.Max(300, _settings.SyncTimeoutSeconds)));
                 try
@@ -313,50 +410,9 @@ namespace ProjectF.Infrastructure.Blockchain
             return Status;
         }
 
-        /// <summary>Background sampler: every second, dial connected peers
-        /// and adopt the highest PeerChainState.TipIndex as the display-only
-        /// catch-up target. Exits with the swarm session (lifetime token).
-        /// API verified against Libplanet 5.5.3 docs (Swarm.Peers is a plain
-        /// BoundPeer list — chain heights only come from
-        /// GetPeerChainStateAsync).</summary>
-        private async Task PeerTipSamplerAsync(CancellationToken ct)
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                try
-                {
-                    Swarm? swarm = _swarm;
-                    if (swarm is { } && swarm.Running)
-                    {
-                        IEnumerable<Libplanet.Net.PeerChainState> states =
-                            await swarm.GetPeerChainStateAsync(TimeSpan.FromSeconds(5), ct);
-                        long best = 0;
-                        foreach (Libplanet.Net.PeerChainState state in states)
-                        {
-                            best = Math.Max(best, state.TipIndex);
-                        }
-
-                        if (best > 0)
-                        {
-                            Volatile.Write(ref _peerTipTarget, best);
-                        }
-                    }
-                }
-                catch
-                {
-                    // Cosmetic only — never let the sampler throw.
-                }
-
-                try
-                {
-                    await Task.Delay(1000, ct);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-            }
-        }
+        // Stage 11.5: the old inline PeerTipSamplerAsync loop moved into the
+        // tracked _registry.Loop call inside BootstrapCoreAsync (cancellation
+        // checked per iteration, task tracked, awaited during teardown).
 
         public IValue? GetState(in Address account, in Address key)
         {
@@ -484,6 +540,81 @@ namespace ProjectF.Infrastructure.Blockchain
         private static string? ReadTrimmed(string path) =>
             File.Exists(path) ? File.ReadAllText(path).Trim() : null;
 
+        /// <summary>Process-wide OS thread count for shutdown evidence —
+        /// untracked threads (NetMQ pollers, transport agents) never show up
+        /// in the task registry. Process.Threads returns 0 on Unity Mono, so
+        /// this walks the Win32 toolhelp snapshot instead. -1 when unavailable
+        /// (non-Windows).</summary>
+        private static int CountThreads()
+        {
+            try
+            {
+                const uint TH32CS_SNAPTHREAD = 0x4;
+                IntPtr snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+                if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1))
+                {
+                    return -1;
+                }
+
+                try
+                {
+                    uint pid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+                    var entry = new THREADENTRY32
+                    {
+                        dwSize = (uint)System.Runtime.InteropServices.Marshal
+                            .SizeOf(typeof(THREADENTRY32)),
+                    };
+                    int count = 0;
+                    if (Thread32First(snapshot, ref entry))
+                    {
+                        do
+                        {
+                            if (entry.th32OwnerProcessID == pid)
+                            {
+                                count++;
+                            }
+                        }
+                        while (Thread32Next(snapshot, ref entry));
+                    }
+
+                    return count;
+                }
+                finally
+                {
+                    CloseHandle(snapshot);
+                }
+            }
+            catch
+            {
+                return -1;
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern bool Thread32First(IntPtr snapshot, ref THREADENTRY32 entry);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern bool Thread32Next(IntPtr snapshot, ref THREADENTRY32 entry);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        [System.Runtime.InteropServices.StructLayout(
+            System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct THREADENTRY32
+        {
+            public uint dwSize;
+            public uint cntUsage;
+            public uint th32ThreadID;
+            public uint th32OwnerProcessID;
+            public int tpBasePri;
+            public int tpDeltaPri;
+            public uint dwFlags;
+        }
+
         /// <summary>Surface for an action that executed but FAILED on-chain —
         /// carries the exception type name(s) recorded in the execution.</summary>
         public sealed class ActionFailedException : Exception
@@ -491,6 +622,123 @@ namespace ProjectF.Infrastructure.Blockchain
             public ActionFailedException(string message)
                 : base(message)
             {
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // Stage 11.5 — ordered async shutdown (spec 2):
+        //   a. cancel the shared CTS,
+        //   b. AWAIT the swarm task (this is the gossip/heartbeat loop that
+        //      kept running into disposal and hung domain reloads) with a
+        //      3s per-task timeout — plus Swarm.StopAsync as the polite
+        //      request first,
+        //   c. only THEN dispose the stores.
+        // VContainer resolves ILibplanetClient as a sync-IDisposable
+        // singleton; the Dispose() bridge below runs this on the threadpool
+        // with a bounded wait during teardown.
+        // -------------------------------------------------------------------
+        public async Task DisposeAsync()
+        {
+            DateTimeOffset started = DateTimeOffset.UtcNow;
+
+            // Stage 16 evidence: thread census before/after teardown — the
+            // "Reloading Domain" stall happens AFTER the guard reports every
+            // tracked task clean, so the culprit is threads the registry
+            // cannot see (NetMQ poller/agents parked in native recv).
+            int threadsBefore = CountThreads();
+
+            // --- a. cancel -------------------------------------------------
+            _cts.Cancel();
+
+            // --- b. await every tracked background task ---------------------
+            if (_swarm is { } swarm)
+            {
+                try
+                {
+                    // Politely ask the swarm to stop FIRST so StartAsync's
+                    // internal loops unwind quickly instead of waiting for
+                    // every transport op to notice the token.
+                    await swarm.StopAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Best effort — the awaited task below is authoritative.
+                }
+            }
+
+            // Await THIS client's tasks only — never another service's loop.
+            // ConfigureAwait(false): the sync Dispose bridge blocks the main
+            // thread — a sync-context continuation would deadlock (EditMode
+            // 14s repro). Finish on the threadpool.
+            await _cts.AwaitOwnedAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+
+            // --- c. dispose the stores (last) -------------------------------
+            try
+            {
+                _stateStore?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[chain] state store dispose failed: {ex.Message}");
+            }
+
+            try
+            {
+                _store?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[chain] store dispose failed: {ex.Message}");
+            }
+
+            _cts.Dispose();
+            _swarm = null;
+            _chain = null;
+
+            // Stage 16 (the reload-hang culprit): Swarm.StopAsync stops
+            // Libplanet's OWN loops, but NetMQ's internal poller/agent
+            // threads park in native recv/send — invisible to
+            // BackgroundTaskRegistry, which is why the guard can log "all
+            // tracked tasks stopped cleanly" and the domain reload STILL
+            // stalls. NetMQ's documented finalizer assist is Cleanup —
+            // non-blocking (false): NEVER block=true on the main thread.
+            try
+            {
+                NetMQ.NetMQConfig.Cleanup(false);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[chain] NetMQ cleanup failed: {ex.Message}");
+            }
+
+            int threadsAfter = CountThreads();
+            string threads = threadsBefore > 0 && threadsAfter > 0
+                ? $" — threads {threadsBefore}→{threadsAfter}"
+                : string.Empty;
+            Debug.Log($"[chain] shutdown complete in " +
+                      $"{(DateTimeOffset.UtcNow - started).TotalMilliseconds:0}ms{threads}.");
+        }
+
+        public void Dispose()
+        {
+            // Sync bridge: Unity teardown (VContainer Dispose / editor guard)
+            // is synchronous. Delegate to the async path and block up to 6s
+            // (3s per-task await + margin) — the EditMode test proves this
+            // completes far faster in the no-server case. Task.Run FIRST:
+            // awaiting on the main thread captures the Unity sync context,
+            // which is blocked in .Wait — deadlock until the timeout (the
+            // EditMode 14s repro).
+            try
+            {
+                Task.Run(() => DisposeAsync()).Wait(TimeSpan.FromSeconds(6));
+            }
+            catch (AggregateException ex) when (ex.InnerExceptions.All(i => i is TimeoutException))
+            {
+                Debug.LogWarning("[chain] shutdown did not finish within 6s — abandoned.");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[chain] shutdown exception: {ex.Message}");
             }
         }
     }

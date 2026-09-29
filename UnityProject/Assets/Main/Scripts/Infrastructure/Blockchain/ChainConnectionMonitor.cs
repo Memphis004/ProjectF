@@ -1,6 +1,8 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
+using ProjectF.Infrastructure;
 using ProjectF.Infrastructure.UI;
 using UnityEngine;
 
@@ -34,7 +36,8 @@ namespace ProjectF.Infrastructure.Blockchain
         private readonly ILibplanetClient _client;
         private readonly IToastService? _toasts;
         private readonly LocalizationService _loc;
-        private CancellationTokenSource? _cts;
+        private readonly BackgroundTaskRegistry _registry;
+        private readonly BackedUpCts _cts;
 
         private ChainStatus _reported = (ChainStatus)(-1);
         private long _lastTip;
@@ -46,10 +49,21 @@ namespace ProjectF.Infrastructure.Blockchain
             ILibplanetClient client,
             LocalizationService loc,
             IToastService? toasts = null)
+            : this(client, loc, toasts, new BackgroundTaskRegistry())
+        {
+        }
+
+        public ChainConnectionMonitor(
+            ILibplanetClient client,
+            LocalizationService loc,
+            IToastService? toasts,
+            BackgroundTaskRegistry registry)
         {
             _client = client;
             _loc = loc;
             _toasts = toasts;
+            _registry = registry;
+            _cts = new BackedUpCts(registry);
             // Mirror of ProjectF.Lib BlockPolicySource.TargetBlockIntervalMs —
             // the assembly reference goes the wrong way for a constant here,
             // and 2s is the seed node's contract (appsettings.json).
@@ -70,36 +84,44 @@ namespace ProjectF.Infrastructure.Blockchain
 
         public void Start()
         {
-            if (_cts is { })
-            {
-                return;
-            }
+            // Tick() is pure computation + toast calls (no Unity API that
+            // requires the main thread) — the tracked threadpool loop is safe
+            // and structurally cancellation-checked (Stage 11.5).
+            _cts.Run(
+                "ChainConnectionMonitor.Poll",
+                TimeSpan.FromMilliseconds(PollIntervalMs),
+                () =>
+                {
+                    Tick();
+                    return Task.CompletedTask;
+                });
+        }
 
-            _cts = new CancellationTokenSource();
-            LoopAsync(_cts.Token).Forget();
+        /// <summary>Spec 2 order: cancel → await the poll task (bounded).
+        /// Awaits ONLY this monitor's task — never another service's loop.</summary>
+        public async Task DisposeAsync()
+        {
+            _cts.Cancel();
+            // ConfigureAwait(false): the sync Dispose bridge blocks the main
+            // thread — a sync-context continuation would deadlock until the
+            // timeout (the 14s EditMode repro). Finish on the threadpool.
+            await _cts.AwaitOwnedAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+            _cts.Dispose();
         }
 
         public void Dispose()
         {
-            _cts?.Cancel();
-            _cts?.Dispose();
-            _cts = null;
-        }
-
-        private async UniTaskVoid LoopAsync(CancellationToken ct)
-        {
-            while (!ct.IsCancellationRequested)
+            // Sync bridge (tests / VContainer teardown): bounded. Task.Run
+            // FIRST: awaiting on the main thread captures the Unity sync
+            // context, which is blocked in .Wait — deadlock until the
+            // timeout (the EditMode 14s repro).
+            try
             {
-                try
-                {
-                    await UniTask.Delay(PollIntervalMs, cancellationToken: ct);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-
-                Tick();
+                Task.Run(() => DisposeAsync()).Wait(TimeSpan.FromSeconds(4));
+            }
+            catch
+            {
+                // Shutdown must never throw into teardown.
             }
         }
 
