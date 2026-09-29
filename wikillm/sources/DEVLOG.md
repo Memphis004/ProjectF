@@ -402,10 +402,34 @@ idle steady-state กลับมา **173 = baseline เป๊ะ** — ⚠️ 
 - 2-instance E2E ผ่านหลัง commit (fresh infra): Editor เห็น P2, P2 เห็น
   Player (session ต่างกัน), 0 exceptions ทั้งสองฝั่ง, teardown clean,
   IsPlaying false, ports ปลอด
-- Known noise ที่ยังไม่แก้: `[state] poll failed: get_isActiveAndEnabled ...
-  main thread` (StateWatcher.cs:100, warning ไม่ fatal — poll บน threadpool
-  แตะ Unity property), `BlockHeaderMessage ... 0 replies` จาก seed (normal
-  transport noise)
+- Known noise ที่ยังไม่แก้: `BlockHeaderMessage ... 0 replies` จาก seed
+  (normal transport noise)
 - MCP `timeoutMs` เพิ่มเป็น 600000 ใน UserSettings config (สำหรับ build/test
   ยาว)
+
+## 9.7 ตามมาแก้ — `[state] poll failed: get_isActiveAndEnabled` (2026-09-30)
+
+เดิมจดไว้ว่าเป็น known noise ไม่ fatal — แต่จริง ๆ คือบักจริงที่เกิบทุก poll
+(2 Hz ตลอด session):
+
+- **Root cause:** poll loop ของ StateWatcher วิ่งบน threadpool แล้ว raise
+  `TipChanged`/`AvatarUpdated`/`OnReorg` ตรง ๆ — subscriber ฝั่ง UI ทุกตัว
+  (HudView, ShopWindow, TaskBoardWindow, CraftWindow, InventoryWindow,
+  FishingView) แตะ MonoBehaviour state ใน handler ของตัวเอง เลยโดน Unity
+  ฉีด `get_isActiveAndEnabled can only be called from the main thread`
+  กลับมาเป็น warning ที่ catch ของ poll loop แล้วหลอกว่า "poll failed"
+  (ทั้งที่ state อ่านสำเร็จ — ตัว raise ต่างหากที่พัง)
+- **แก้:** จับ `SynchronizationContext` ไว้ตอน `Start()` แล้ว raise ผ่าน
+  `RaiseOnMain()` — ถ้าอยู่บน context นั้นอยู่แล้วหรือไม่มี context → invoke
+  ตรง (EditMode tests เรียก `PollOnce` บน test thread ยัง sync ได้เหมือนเดิม),
+  ถ้าบน threadpool → `context.Post()` กลับ main thread (Post เป็น FIFO จึง
+  คงลำดับ TipChanged ก่อน AvatarUpdated ของ poll เดียวกัน) ส่วน chain read
+  หนัก ๆ ยังอยู่บน threadpool เหมือนเดิม
+- **พยาน:** play mode มี chain live, probe subscribe ทั้งสอง event แล้วเช็ค
+  thread id ของ handler — `fired=14, offMainThread=0` (ทุกครั้งบน main thread
+  tid=1), warnings 295→0 หลัง fix, EditMode 31/31 (commit `c3ba7c8`)
+- **บทเรียน:** warning ที่โผล่ซ้ำถาวรแบบนี้ "ไม่ fatal" ก็ยังต้องไล่ — มัน
+  บังคับว่า event contract ของ service ที่ poll บน background ต้องระบุชัดว่า
+  handler วิ่งบน thread ไหน และครั้งแรกที่ subscriber แตะ Unity API มันจะระเบิด
+  เป็น log spam แทน error ชัด ๆ
 
