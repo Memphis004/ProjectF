@@ -63,8 +63,12 @@ namespace ProjectF.Infrastructure
             // Chain layer (consensus — owns ALL ownership/economy truth)
             builder.Register<KeyStore>(Lifetime.Singleton);
             builder.Register<ILibplanetClient, LibplanetClient>(Lifetime.Singleton);
-            builder.Register<ActionQueue>(Lifetime.Singleton);
             builder.Register<StateWatcher>(Lifetime.Singleton);
+            // Stage 11: optimistic display overlay + connection monitor.
+            // OptimisticState is DISPLAY ONLY — nothing may gate legality on it.
+            builder.Register<OptimisticState>(Lifetime.Singleton);
+            builder.Register<ChainConnectionMonitor>(Lifetime.Singleton);
+            builder.Register<ActionQueue>(Lifetime.Singleton);
 
             // Presence layer (cosmetic — degrades to Offline status when the
             // hub is down; SceneRouter checks IsOnline per hop).

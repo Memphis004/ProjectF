@@ -13,25 +13,52 @@ namespace ProjectF.Infrastructure.Blockchain
 {
     /// <summary>
     /// Polls the player's avatar/inventory/pond state on new tips and raises
-    /// typed events (spec section 7). Stage 11 adds reorg detection here;
-    /// Stage 7 ships the polling loop + change detection.
+    /// typed events (spec section 7). Stage 7 shipped the polling loop +
+    /// change detection.
+    ///
+    /// Stage 11 adds:
+    /// - REORG DETECTION: the tip hash is remembered with its index. When the
+    ///   index moves but the recorded parent hash is no longer in our recent
+    ///   history, the new tip is not a descendant of the previous one → full
+    ///   state re-read + <see cref="OnReorg"/> (depth = fork point distance).
+    /// - PER-TIP DEBOUNCE: at most one full read per tip (AvatarUpdated is
+    ///   raised once per tip unless something else changed it), so fast blocks
+    ///   cannot flood the UI thread with rebuilds.
     /// </summary>
     public sealed class StateWatcher : IDisposable
     {
         private const int PollIntervalMs = 500;
+
+        /// <summary>How many recent tip hashes are remembered for the
+        /// descendant check. At 2s blocks this covers ~2 minutes of history —
+        /// far beyond any realistic debounce window.</summary>
+        private const int TipHistorySize = 64;
 
         private readonly ILibplanetClient _client;
         private readonly KeyStore _keyStore;
         private CancellationTokenSource? _cts;
 
         private long _lastTip = -1;
+        private string _lastTipHash = string.Empty;
         private AvatarSnapshot? _last;
+
+        /// <summary>Recent tip hashes (newest last) for reorg detection.</summary>
+        private readonly List<string> _recentTipHashes = new(TipHistorySize);
+
+        /// <summary>Hashes this tip index was already fully read at — the
+        /// debounce set ("at most one full read per tip").</summary>
+        private readonly HashSet<string> _readTips = new(StringComparer.Ordinal);
 
         /// <summary>Fired on every tip change (index, hex hash).</summary>
         public event Action<long, string>? TipChanged;
 
         /// <summary>Fired after each poll with the confirmed world view.</summary>
         public event Action<AvatarSnapshot>? AvatarUpdated;
+
+        /// <summary>Stage 11: fired when the new tip is NOT a descendant of
+        /// the previous tip — the depth is how many blocks were dropped from
+        /// our previous view (1 = the previous tip itself was orphaned).</summary>
+        public event Action<long>? OnReorg;
 
         public AvatarSnapshot? Current => _last;
 
@@ -91,9 +118,63 @@ namespace ProjectF.Infrastructure.Blockchain
             }
 
             long tip = _client.TipIndex;
-            AvatarSnapshot snapshot = ReadSnapshot(tip);
+            string tipHash = _client.TipHash;
 
-            bool tipMoved = tip != _lastTip;
+            bool tipMoved = tip != _lastTip || tipHash != _lastTipHash;
+
+            // --- Stage 11: reorg detection -------------------------------
+            // The tip moved: the new tip extends the old one IFF its PARENT is
+            // the previously-seen tip (or already part of our recent history).
+            // If the parent is neither, blocks we already read state from were
+            // replaced → re-read everything from scratch and raise OnReorg.
+            if (tipMoved && _lastTip >= 0 && tipHash != _lastTipHash)
+            {
+                string parentHash = _client.TipPreviousHash;
+                bool descendant = string.IsNullOrEmpty(parentHash)
+                    || parentHash == _lastTipHash
+                    || _recentTipHashes.Contains(parentHash);
+                if (!descendant)
+                {
+                    long depth = Math.Min(tip - _lastTip, Math.Max(1, _recentTipHashes.Count));
+                    Debug.LogWarning(
+                        $"[state] REORG detected at tip #{tip}: new tip's parent " +
+                        $"{Short(parentHash)} is neither the previous tip " +
+                        $"{Short(_lastTipHash)} nor in recent history — re-reading " +
+                        "all watched state from scratch.");
+                    OnReorg?.Invoke(depth);
+                    _readTips.Clear();
+                }
+            }
+
+            // --- Stage 11: per-tip debounce ------------------------------
+            // At most one FULL read per (tip, hash): stamina regen is stamped
+            // per block, so a moved tip may still change values, but polling
+            // the SAME tip twice can only re-read identical state.
+            bool alreadyRead = !tipMoved || _readTips.Contains(tipHash);
+
+            if (tipMoved)
+            {
+                RememberTip(tip, tipHash);
+                TipChanged?.Invoke(tip, tipHash);
+            }
+
+            AvatarSnapshot snapshot;
+            if (alreadyRead && _last is { })
+            {
+                // Debounced: reuse the previous read for this exact tip. (The
+                // events still fire below so the optimistic overlay stays live.)
+                snapshot = _last;
+            }
+            else
+            {
+                snapshot = ReadSnapshot(tip);
+                _readTips.Add(tipHash);
+                while (_readTips.Count > TipHistorySize)
+                {
+                    _readTips.RemoveOldest();
+                }
+            }
+
             bool stateMoved = _last is null
                 || snapshot.Stamina != _last.Stamina
                 || snapshot.Gold != _last.Gold
@@ -104,16 +185,24 @@ namespace ProjectF.Infrastructure.Blockchain
                 || !TasksEquals(_last.Tasks, snapshot.Tasks);
 
             _lastTip = tip;
+            _lastTipHash = tipHash;
             _last = snapshot;
-
-            if (tipMoved)
-            {
-                TipChanged?.Invoke(tip, _client.TipHash);
-            }
 
             if (stateMoved || tipMoved)
             {
                 AvatarUpdated?.Invoke(snapshot);
+            }
+        }
+
+        private void RememberTip(long tip, string tipHash)
+        {
+            if (_lastTipHash is { Length: > 0 } && _lastTip >= 0)
+            {
+                _recentTipHashes.Add(_lastTipHash);
+                while (_recentTipHashes.Count > TipHistorySize)
+                {
+                    _recentTipHashes.RemoveAt(0);
+                }
             }
         }
 
@@ -186,6 +275,9 @@ namespace ProjectF.Infrastructure.Blockchain
                 kitchen, inventory, tasks, tasksLastRerolledAt);
         }
 
+        private static string Short(string hash) =>
+            hash.Length <= 10 ? hash : hash[..10];
+
         private static bool TasksEquals(
             IReadOnlyDictionary<int, bool> a, IReadOnlyDictionary<int, bool> b)
         {
@@ -222,6 +314,21 @@ namespace ProjectF.Infrastructure.Blockchain
             }
 
             return true;
+        }
+    }
+
+    /// <summary>Tiny HashSet<T> extension: remove the "oldest" (first) entry —
+    /// HashSet iteration order is insertion order until removals happen; for
+    /// our bounded window that is exactly the FIFO behaviour we want.</summary>
+    internal static class StateWatcherExtensions
+    {
+        public static void RemoveOldest(this HashSet<string> set)
+        {
+            foreach (string item in set)
+            {
+                set.Remove(item);
+                return;
+            }
         }
     }
 }

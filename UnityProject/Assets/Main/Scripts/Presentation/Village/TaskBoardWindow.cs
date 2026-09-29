@@ -86,6 +86,8 @@ namespace ProjectF.Presentation.Village
         private readonly LocalizationService loc;
         private readonly IWindowService windows;
         private readonly IToastService toasts;
+        private readonly OptimisticState optimistic;
+        private readonly ChainConnectionMonitor connection;
 
         private TaskBoardWindow? view;
         private StateWatcher? boundWatcher;
@@ -97,7 +99,9 @@ namespace ProjectF.Presentation.Village
             UnityTableService tables,
             LocalizationService loc,
             IWindowService windowService,
-            IToastService toasts)
+            IToastService toasts,
+            OptimisticState optimistic,
+            ChainConnectionMonitor connection)
         {
             actions = actionQueue;
             state = stateWatcher;
@@ -105,6 +109,8 @@ namespace ProjectF.Presentation.Village
             this.loc = loc;
             windows = windowService;
             this.toasts = toasts;
+            this.optimistic = optimistic;
+            this.connection = connection;
         }
 
         public void Attach(TaskBoardWindow window)
@@ -118,6 +124,7 @@ namespace ProjectF.Presentation.Village
             view = window;
             boundWatcher = state;
             boundWatcher.AvatarUpdated += OnAvatarUpdated;
+            optimistic.MergedUpdated += OnAvatarUpdated;
 
             // First paint (pooled window: later opens rely on AvatarUpdated —
             // without an initial rebuild the rows/overlay would keep the
@@ -133,6 +140,7 @@ namespace ProjectF.Presentation.Village
                 boundWatcher = null;
             }
 
+            optimistic.MergedUpdated -= OnAvatarUpdated;
             view = null;
         }
 
@@ -152,7 +160,7 @@ namespace ProjectF.Presentation.Village
             }
 
             GeneratedTables table = tables.Tables;
-            AvatarSnapshot? snap = state.Current;
+            AvatarSnapshot? snap = optimistic.Current;
             ClearRows();
 
             if (snap is null)
@@ -214,21 +222,33 @@ namespace ProjectF.Presentation.Village
                 return;
             }
 
+            if (!connection.CanSubmit)
+            {
+                toasts.Warning(connection.BlockedReason());
+                return;
+            }
+
             isSubmitting = true;
             GeneratedTables table = tables.Tables;
             AvatarSnapshot? before = state.Current;
+            TaskRow? task = table.TbTask.GetOrDefault(taskId);
             try
             {
-                IDisposable pending = toasts.ShowPending(loc.Get("TOAST_ACTION_PENDING"));
-                bool ok;
-                try
-                {
-                    ok = await actions.SubmitAsync(new SubmitTaskAction(taskId));
-                }
-                finally
-                {
-                    pending.Dispose();
-                }
+                (bool ok, string reason) = await actions.SubmitWithGuessAsync(
+                    new SubmitTaskAction(taskId),
+                    guess: g =>
+                    {
+                        if (task is { })
+                        {
+                            g.Item(task.TargetItemId, -task.TargetCount);
+                            g.Gold(task.RewardGold);
+                            g.FishingExp(task.RewardExp);
+                            if (task.RewardItemId > 0 && task.RewardItemCount > 0)
+                            {
+                                g.Item(task.RewardItemId, task.RewardItemCount);
+                            }
+                        }
+                    });
 
                 if (ok)
                 {
@@ -238,7 +258,9 @@ namespace ProjectF.Presentation.Village
                 }
                 else
                 {
-                    toasts.Error(loc.Get("ERR_UNKNOWN"));
+                    // Guess already rolled back + toast raised by
+                    // OptimisticState.OnRolledBack.
+                    toasts.Error(ErrorMapper.Localize(reason));
                 }
             }
             finally

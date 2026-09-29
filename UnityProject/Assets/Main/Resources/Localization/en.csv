@@ -32,6 +32,9 @@ UI_EMPTY_INVENTORY,Nothing here yet — go fish or farm
 TOAST_CHAIN_OFFLINE,Chain unreachable — read-only mode
 TOAST_PRESENCE_OFFLINE,Hub down — single-player mode
 TOAST_ACTION_PENDING,Waiting for block confirmation…
+TOAST_CHAIN_STALLED,Chain stalled — no new blocks; actions paused
+ROLLBACK_TOAST,Cancelled: {0}
+ROLLBACK_RECONCILED,display out of sync with the chain
 # Items (data/item.csv name_key)
 ITEM_NAME_BAIT_WORM,Worm
 ITEM_NAME_BAIT_SHRIMP,Shrimp

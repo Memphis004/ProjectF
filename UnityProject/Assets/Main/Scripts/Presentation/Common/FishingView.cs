@@ -1,7 +1,9 @@
 using System;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using ProjectF.Infrastructure;
 using ProjectF.Infrastructure.Blockchain;
+using ProjectF.Infrastructure.UI;
 using ProjectF.Lib.Actions;
 using UnityEngine;
 using UnityEngine.UI;
@@ -59,14 +61,26 @@ namespace ProjectF.Presentation.Common
         private readonly ActionQueue actions;
         private readonly StateWatcher state;
         private readonly FishingView view;
+        private readonly OptimisticState optimistic;
+        private readonly ChainConnectionMonitor connection;
+        private readonly IToastService toasts;
 
         private CancellationTokenSource? cts;
 
-        public FishingPresenter(ActionQueue actionQueue, StateWatcher stateWatcher, FishingView view)
+        public FishingPresenter(
+            ActionQueue actionQueue,
+            StateWatcher stateWatcher,
+            FishingView view,
+            OptimisticState optimistic,
+            ChainConnectionMonitor connection,
+            IToastService toasts)
         {
             actions = actionQueue;
             state = stateWatcher;
             this.view = view;
+            this.optimistic = optimistic;
+            this.connection = connection;
+            this.toasts = toasts;
         }
 
         public void Bind()
@@ -91,9 +105,20 @@ namespace ProjectF.Presentation.Common
             view.ShowStatus($"Inventory items: {snapshot.Inventory.Count}");
         }
 
-        /// <summary>Full cast: occupy → fish. Each step cancels the next on failure.</summary>
+        /// <summary>Full cast: occupy → fish. Each step cancels the next on
+        /// failure. Stage 11: every step moves the HUD numbers the instant it
+        /// is submitted (optimistic guess), rolls back + toasts on failure.</summary>
         public async UniTask CastAsync(int pondId, int baitItemId, CancellationToken ct)
         {
+            // Stage 11 gate: never enqueue into a Stalled/Offline chain — a
+            // clear refusal beats a silent 30s timeout.
+            if (!connection.CanSubmit)
+            {
+                view.ShowStatus(connection.BlockedReason());
+                toasts.Warning(connection.BlockedReason());
+                return;
+            }
+
             cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             CancellationToken token = cts.Token;
 
@@ -101,25 +126,43 @@ namespace ProjectF.Presentation.Common
             view.ShowStatus("Finding a slot at the pond…");
             try
             {
-                if (!await actions.SubmitAsync(new OccupyPondAction(pondId), token))
+                // Occupy: no resource cost on-chain (renewing a lease) — no
+                // optimistic guess beyond the pending-action badge.
+                (bool occupied, string occupyReason) = await actions.SubmitWithGuessAsync(
+                    new OccupyPondAction(pondId), guess: null, token);
+                if (!occupied)
                 {
                     view.ShowStatus("Could not take a slot at the pond.");
+                    toasts.Error(ErrorMapper.Localize(occupyReason));
                     return;
                 }
 
                 view.ShowStatus("Casting…");
-                AvatarSnapshot? before = state.Current;
-                long baitBefore = before?.GetItemCount(baitItemId) ?? 0L;
 
-                if (!await actions.SubmitAsync(new FishingAction(pondId, baitItemId), token))
+                // Fish: the optimistic guess moves bait −1 / stamina −(rod
+                // discount at the fishing level) the moment we click. The
+                // catch itself (item + exp) is the CHAIN's roll — it appears
+                // when the block confirms.
+                (bool caught, string fishReason) = await actions.SubmitWithGuessAsync(
+                    new FishingAction(pondId, baitItemId),
+                    guess: guess => guess.Item(baitItemId, -1).Stamina(-FishingStaminaCost()),
+                    token);
+
+                if (!caught)
                 {
+                    // SubmitWithGuessAsync already rolled the guess back and
+                    // raised OptimisticState.OnRolledBack → the "ยกเลิกรายการ"
+                    // toast. Here we only set the status line.
                     view.ShowStatus("The fish got away (action failed).");
+                    toasts.Error(ErrorMapper.Localize(fishReason));
                     return;
                 }
 
                 // Inventory diff before/after decides the catch animation —
                 // NEVER a client-side roll (knowledge.md rule 1).
-                AvatarSnapshot? after = state.Current;
+                AvatarSnapshot? before = state.Current;
+                long baitBefore = before?.GetItemCount(baitItemId) ?? 0L;
+                AvatarSnapshot? after = optimistic.Current;
                 long baitAfter = after?.GetItemCount(baitItemId) ?? baitBefore;
                 bool consumedBait = baitAfter < baitBefore;
                 view.ShowStatus(consumedBait ? "Caught something!" : "It slipped the hook…");
@@ -129,6 +172,16 @@ namespace ProjectF.Presentation.Common
             {
                 view.SetCasting(false);
             }
+        }
+
+        /// <summary>Display-only mirror of the chain's fishing stamina cost
+        /// max(1, 5 − rod.StaminaDiscount): 5 − level*0.2 floor… kept honest
+        /// by the reconciliation warning — the chain remains the authority.</summary>
+        private long FishingStaminaCost()
+        {
+            // Phase-1 rod table has no client copy here; 5 is the undiscounted
+            // cost. Drift beyond tolerance is logged by OptimisticState.
+            return 5;
         }
 
         public void Cancel()

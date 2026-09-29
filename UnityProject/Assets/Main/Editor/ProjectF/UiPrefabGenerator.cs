@@ -80,6 +80,8 @@ namespace ProjectF.Editor
                 "UI_TAB_SEED", "UI_TAB_CROP", "UI_TAB_MATERIAL", "UI_TAB_FOOD",
                 "UI_TOOLTIP_PRICE", "UI_TOOLTIP_COUNT", "UI_EMPTY_INVENTORY",
                 "TOAST_CHAIN_OFFLINE", "TOAST_PRESENCE_OFFLINE", "TOAST_ACTION_PENDING",
+                // Stage 11: stalled chain + optimistic rollback toasts.
+                "TOAST_CHAIN_STALLED", "ROLLBACK_TOAST", "ROLLBACK_RECONCILED",
                 // Stage 10 interaction + error mapping + shop/task/kitchen chrome.
                 "ERR_NOT_ENOUGH_STAMINA", "ERR_NOT_ENOUGH_GOLD", "ERR_ITEM_NOT_FOUND",
                 "ERR_POND_FULL", "ERR_PERMISSION_DENIED", "ERR_STATE_CORRUPT",

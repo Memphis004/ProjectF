@@ -121,6 +121,8 @@ namespace ProjectF.Presentation.AuntieHouse
         private readonly LocalizationService loc;
         private readonly IWindowService windows;
         private readonly IToastService toasts;
+        private readonly OptimisticState optimistic;
+        private readonly ChainConnectionMonitor connection;
 
         private CraftWindow? view;
         private StateWatcher? boundWatcher;
@@ -135,7 +137,9 @@ namespace ProjectF.Presentation.AuntieHouse
             UnityTableService tables,
             LocalizationService loc,
             IWindowService windowService,
-            IToastService toasts)
+            IToastService toasts,
+            OptimisticState optimistic,
+            ChainConnectionMonitor connection)
         {
             actions = actionQueue;
             state = stateWatcher;
@@ -143,6 +147,8 @@ namespace ProjectF.Presentation.AuntieHouse
             this.loc = loc;
             windows = windowService;
             this.toasts = toasts;
+            this.optimistic = optimistic;
+            this.connection = connection;
         }
 
         public void Attach(CraftWindow window)
@@ -156,6 +162,7 @@ namespace ProjectF.Presentation.AuntieHouse
             view = window;
             boundWatcher = state;
             boundWatcher.AvatarUpdated += OnAvatarUpdated;
+            optimistic.MergedUpdated += OnAvatarUpdated;
 
             window.MinusButton.onClick.AddListener(() =>
             {
@@ -183,6 +190,7 @@ namespace ProjectF.Presentation.AuntieHouse
                 boundWatcher = null;
             }
 
+            optimistic.MergedUpdated -= OnAvatarUpdated;
             view = null;
         }
 
@@ -216,7 +224,7 @@ namespace ProjectF.Presentation.AuntieHouse
             }
 
             GeneratedTables table = tables.Tables;
-            AvatarSnapshot? snap = state.Current;
+            AvatarSnapshot? snap = optimistic.Current;
             bool unlocked = snap?.KitchenUnlocked ?? false;
 
             view.LockedOverlay.SetActive(!unlocked);
@@ -286,6 +294,11 @@ namespace ProjectF.Presentation.AuntieHouse
                 return;
             }
 
+            // NOTE: the gates below read the MERGED view (display only) for
+            // UX snappiness. They are affordances, not legality — the chain
+            // re-validates everything and the optimistic guess rolls back on
+            // any on-chain rejection.
+
             int great = CraftLogic.GreatChance(snap?.CookingLevel ?? 1);
             long cost = CraftLogic.StaminaCost(recipe.StaminaCost, portions);
             bool materialsOk = snap is { }
@@ -311,21 +324,31 @@ namespace ProjectF.Presentation.AuntieHouse
                 return;
             }
 
+            if (!connection.CanSubmit)
+            {
+                toasts.Warning(connection.BlockedReason());
+                return;
+            }
+
             isUnlocking = true;
             try
             {
-                IDisposable pending = toasts.ShowPending(loc.Get("TOAST_ACTION_PENDING"));
-                bool ok;
-                try
-                {
-                    ok = await actions.SubmitAsync(new ProjectF.Lib.Actions.UnlockKitchenAction());
-                }
-                finally
-                {
-                    pending.Dispose();
-                }
+                (bool ok, string reason) = await actions.SubmitWithGuessAsync(
+                    new ProjectF.Lib.Actions.UnlockKitchenAction(),
+                    guess: g =>
+                    {
+                        g.Gold(-ProjectF.Lib.Actions.UnlockKitchenAction.UnlockCostGold);
+                        g.SetKitchenUnlocked();
+                    });
 
-                toasts.Success(loc.Get("KITCHEN_UNLOCKED"));
+                if (ok)
+                {
+                    toasts.Success(loc.Get("KITCHEN_UNLOCKED"));
+                }
+                else
+                {
+                    toasts.Error(ErrorMapper.Localize(reason));
+                }
             }
             finally
             {
@@ -341,21 +364,31 @@ namespace ProjectF.Presentation.AuntieHouse
                 return;
             }
 
+            if (!connection.CanSubmit)
+            {
+                toasts.Warning(connection.BlockedReason());
+                return;
+            }
+
             isCrafting = true;
             GeneratedTables table = tables.Tables;
             AvatarSnapshot? before = state.Current;
+            ProjectF.Tables.Recipe? recipe = table.TbRecipe.GetOrDefault(selectedRecipeId);
             try
             {
-                IDisposable pending = toasts.ShowPending(loc.Get("TOAST_ACTION_PENDING"));
-                bool ok;
-                try
-                {
-                    ok = await actions.SubmitAsync(new CraftFoodAction(selectedRecipeId, portions));
-                }
-                finally
-                {
-                    pending.Dispose();
-                }
+                (bool ok, string reason) = await actions.SubmitWithGuessAsync(
+                    new CraftFoodAction(selectedRecipeId, portions),
+                    guess: g =>
+                    {
+                        if (recipe is { })
+                        {
+                            g.Stamina(-CraftLogic.StaminaCost(recipe.StaminaCost, portions));
+                            foreach ((int itemId, int count) in MaterialsFor(table, recipe.Id))
+                            {
+                                g.Item(itemId, -(long)count * portions);
+                            }
+                        }
+                    });
 
                 if (ok)
                 {
@@ -363,7 +396,7 @@ namespace ProjectF.Presentation.AuntieHouse
                 }
                 else
                 {
-                    toasts.Error(loc.Get("ERR_UNKNOWN"));
+                    toasts.Error(ErrorMapper.Localize(reason));
                 }
             }
             finally

@@ -4,6 +4,7 @@ using ProjectF.Infrastructure.Blockchain;
 using ProjectF.Infrastructure.DataTables;
 using ProjectF.Infrastructure.Network;
 using ProjectF.Infrastructure.Scene;
+using ProjectF.Infrastructure.UI;
 using UnityEngine;
 using VContainer.Unity;
 
@@ -15,12 +16,18 @@ namespace ProjectF.Infrastructure
     /// load tables → load/create key → start embedded node & sync → connect
     /// presence (fire-and-forget, MUST NOT block gameplay if the hub is down)
     /// → route to the Village scene.
+    /// Stage 11: also starts the connection monitor (Stalled detection + HUD
+    /// dot) and routes OptimisticState rollbacks into the toast queue
+    /// ("ยกเลิกรายการ: <reason>").
     /// </summary>
     public sealed class AppBootstrapper : IAsyncStartable
     {
         private readonly UnityTableService _tables;
         private readonly ILibplanetClient _chain;
         private readonly StateWatcher _stateWatcher;
+        private readonly OptimisticState _optimistic;
+        private readonly ChainConnectionMonitor _connectionMonitor;
+        private readonly IToastService _toasts;
         private readonly IPresenceClient _presence;
         private readonly SceneRouter _sceneRouter;
 
@@ -28,12 +35,18 @@ namespace ProjectF.Infrastructure
             UnityTableService tables,
             ILibplanetClient chain,
             StateWatcher stateWatcher,
+            OptimisticState optimistic,
+            ChainConnectionMonitor connectionMonitor,
+            IToastService toasts,
             IPresenceClient presence,
             SceneRouter sceneRouter)
         {
             _tables = tables;
             _chain = chain;
             _stateWatcher = stateWatcher;
+            _optimistic = optimistic;
+            _connectionMonitor = connectionMonitor;
+            _toasts = toasts;
             _presence = presence;
             _sceneRouter = sceneRouter;
         }
@@ -49,8 +62,11 @@ namespace ProjectF.Infrastructure
             ChainStatus status = await _chain.BootstrapAsync(cancellation);
             Debug.Log($"[boot] chain status: {status} (tip #{_chain.TipIndex})");
 
-            // 3. Start watching confirmed state (HUD binding source).
+            // 3. Start watching confirmed state (HUD binding source) + the
+            //    Stage 11 display overlay + connection monitor.
             _stateWatcher.Start();
+            _connectionMonitor.Start();
+            _optimistic.OnRolledBack += OnOptimisticRolledBack;
 
             // 4. Presence: FIRE-AND-FORGET — a down hub must never block
             //    gameplay. PlayerHubClient degrades to Offline status;
@@ -65,7 +81,33 @@ namespace ProjectF.Infrastructure
             //    after Village is live — and skips it entirely while offline.
             await _sceneRouter.GoToInitialAsync(SceneId.Village);
 
-            Debug.Log("[boot] Stage 7 client up.");
+            Debug.Log("[boot] Stage 7 client up (Stage 11 UX chain online).");
+        }
+
+        /// <summary>UX contract (spec stage 11): a rolled-back optimistic
+        /// mutation toasts "ยกเลิกรายการ: <reason>" — the display restored
+        /// itself when the pending entry was dropped. Reconciled rollbacks
+        /// (drift beyond tolerance) log only — the confirmed numbers stood.</summary>
+        private void OnOptimisticRolledBack(Rollback rollback)
+        {
+            if (rollback.Reason == RollbackReason.Reconciled)
+            {
+                return; // silent: chain truth won, nothing was cancelled.
+            }
+
+            // Prefer the mapped on-chain validation reason (e.g. "not enough
+            // gold") over the generic failed/cancelled/timeout line.
+            string mapped = ErrorMapper.Classify(rollback.RawReason) is { } key
+                ? ErrorMapper.Localize(rollback.RawReason)
+                : rollback.Reason switch
+                {
+                    RollbackReason.TimedOut => ErrorMapper.Localize("timeout"),
+                    RollbackReason.Cancelled => ErrorMapper.Localize("cancelled"),
+                    _ => ErrorMapper.Localize("failed"),
+                };
+
+            _toasts.Warning(
+                RootLocalization.Get("ROLLBACK_TOAST").Replace("{0}", mapped));
         }
     }
 }

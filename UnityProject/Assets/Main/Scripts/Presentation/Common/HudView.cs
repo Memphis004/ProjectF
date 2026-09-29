@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using ProjectF.Infrastructure;
 using ProjectF.Infrastructure.Blockchain;
 using ProjectF.Infrastructure.Network;
 using ProjectF.Infrastructure.UI;
@@ -58,6 +59,11 @@ namespace ProjectF.Presentation.Common
         [SerializeField]
         private Text syncLabel = default!;
 
+        /// <summary>Stage 11: pending-action badge ("…n" while actions are
+        /// staged, a spinning dot while queued). Zero logic — presenter-driven.</summary>
+        [SerializeField]
+        private Text pendingLabel = default!;
+
         public Text NameLabel => nameLabel;
         public Text StaminaLabel => staminaLabel;
         public Image StaminaBar => staminaBar;
@@ -70,6 +76,8 @@ namespace ProjectF.Presentation.Common
         public Image ChainStatusDot => chainStatusDot;
         public Image PresenceStatusDot => presenceStatusDot;
         public Text SyncLabel => syncLabel;
+
+        public Text PendingLabel => pendingLabel;
     }
 
     /// <summary>HUD PRESENTER — binds <see cref="StateWatcher"/> and presence
@@ -81,6 +89,7 @@ namespace ProjectF.Presentation.Common
         private static readonly Color SyncedColor = new(0.36f, 0.78f, 0.35f);
         private static readonly Color SyncingColor = new(0.95f, 0.80f, 0.25f);
         private static readonly Color OfflineColor = new(0.85f, 0.30f, 0.25f);
+        private static readonly Color StalledColor = new(0.95f, 0.55f, 0.15f);
         private static readonly Color OnlineColor = new(0.36f, 0.78f, 0.35f);
 
         /// <summary>Mirror of ProjectF.Lib AvatarState.LevelExpThresholds
@@ -95,6 +104,8 @@ namespace ProjectF.Presentation.Common
         private readonly IPresenceClient presence;
         private readonly LocalizationService loc;
         private readonly ILibplanetClient chain;
+        private readonly ActionQueue actions;
+        private readonly ChainConnectionMonitor connection;
 
         private StateWatcher? watcher;
         private bool bound;
@@ -104,12 +115,16 @@ namespace ProjectF.Presentation.Common
             HudView view,
             IPresenceClient presence,
             LocalizationService loc,
-            ILibplanetClient chain)
+            ILibplanetClient chain,
+            ActionQueue actions,
+            ChainConnectionMonitor connection)
         {
             this.view = view;
             this.presence = presence;
             this.loc = loc;
             this.chain = chain;
+            this.actions = actions;
+            this.connection = connection;
         }
 
         /// <summary>Re-binds to the state watcher (called on every scene start).</summary>
@@ -127,6 +142,11 @@ namespace ProjectF.Presentation.Common
             watcher.AvatarUpdated += OnAvatar;
             watcher.TipChanged += OnTip;
             presence.StatusChanged += OnPresenceStatus;
+            actions.PendingChanged += RenderPending;
+            connection.StatusChanged += OnConnectionStatus;
+
+            RenderPending();
+            OnConnectionStatus(connection.Status);
 
             if (watcher.Current is { } snapshot)
             {
@@ -274,6 +294,29 @@ namespace ProjectF.Presentation.Common
             }
         }
 
+        /// <summary>Stage 11: pending-action indicator — "…n" while actions
+        /// are queued/staged, blank when idle. Display only; the queue owns
+        /// the state machine.</summary>
+        private void RenderPending()
+        {
+            if (view.PendingLabel is { })
+            {
+                int count = actions.Pending.Count;
+                view.PendingLabel.gameObject.SetActive(count > 0);
+                if (count > 0)
+                {
+                    view.PendingLabel.text = actions.HasStaged
+                        ? $"…{count}"
+                        : $"○{count}";
+                }
+            }
+        }
+
+        private void OnConnectionStatus(ChainStatus status)
+        {
+            SetChainStatus(status);
+        }
+
         private void OnPresenceStatus(PresenceStatus status)
         {
             if (view.PresenceStatusDot is { })
@@ -284,8 +327,9 @@ namespace ProjectF.Presentation.Common
             }
         }
 
-        /// <summary>Called by the bootstrap / a chain monitor (Stage 11) when
-        /// the chain status changes.</summary>
+        /// <summary>Called by <see cref="ChainConnectionMonitor"/> (subscribed
+        /// in <see cref="Bind"/>) when the monitored status changes. Stalled
+        /// shows amber-red — distinct from offline red and syncing yellow.</summary>
         public void SetChainStatus(ChainStatus status)
         {
             if (view.ChainStatusDot is { })
@@ -294,6 +338,7 @@ namespace ProjectF.Presentation.Common
                 {
                     ChainStatus.Synced => SyncedColor,
                     ChainStatus.Syncing or ChainStatus.Bootstrapping => SyncingColor,
+                    ChainStatus.Stalled => StalledColor,
                     _ => OfflineColor,
                 };
             }
@@ -316,6 +361,8 @@ namespace ProjectF.Presentation.Common
             }
 
             presence.StatusChanged -= OnPresenceStatus;
+            actions.PendingChanged -= RenderPending;
+            connection.StatusChanged -= OnConnectionStatus;
             syncCts?.Cancel();
             syncCts?.Dispose();
             syncCts = null;

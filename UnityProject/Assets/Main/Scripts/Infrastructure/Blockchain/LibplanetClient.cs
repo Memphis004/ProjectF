@@ -62,6 +62,10 @@ namespace ProjectF.Infrastructure.Blockchain
 
         public string TipHash => _chain?.Tip.Hash.ToString() ?? string.Empty;
 
+        // Stage 11: parent of the tip — the reorg detector compares this to
+        // the previously-seen tip hash (genesis has no parent → empty).
+        public string TipPreviousHash => _chain?.Tip.PreviousHash?.ToString() ?? string.Empty;
+
         public ChainStatus Status { get; private set; } = ChainStatus.Bootstrapping;
 
         public int PeerCount => _swarm?.Peers.Count ?? 0;

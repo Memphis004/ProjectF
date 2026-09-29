@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using ProjectF.Infrastructure;
 using ProjectF.Infrastructure.Blockchain;
 using ProjectF.Infrastructure.DataTables;
 using ProjectF.Infrastructure.UI;
@@ -74,6 +75,8 @@ namespace ProjectF.Presentation.Common
         private readonly SpriteRegistry sprites;
         private readonly ActionQueue actions;
         private readonly IToastService toasts;
+        private readonly OptimisticState optimistic;
+        private readonly ChainConnectionMonitor connection;
 
         private InventoryWindow? view;
         private StateWatcher? boundWatcher;
@@ -86,7 +89,9 @@ namespace ProjectF.Presentation.Common
             LocalizationService loc,
             SpriteRegistry sprites,
             ActionQueue actionQueue,
-            IToastService toastService)
+            IToastService toastService,
+            OptimisticState optimistic,
+            ChainConnectionMonitor connection)
         {
             this.state = stateWatcher;
             this.tables = tables;
@@ -94,6 +99,8 @@ namespace ProjectF.Presentation.Common
             this.sprites = sprites;
             actions = actionQueue;
             toasts = toastService;
+            this.optimistic = optimistic;
+            this.connection = connection;
         }
 
         /// <summary>Called by WindowService right before OnOpenAsync of the
@@ -110,6 +117,7 @@ namespace ProjectF.Presentation.Common
             view = window;
             boundWatcher = state;
             boundWatcher.AvatarUpdated += OnAvatarUpdated;
+            optimistic.MergedUpdated += OnMergedUpdated;
         }
 
         public void Detach()
@@ -120,6 +128,7 @@ namespace ProjectF.Presentation.Common
                 boundWatcher = null;
             }
 
+            optimistic.MergedUpdated -= OnMergedUpdated;
             view = null;
         }
 
@@ -131,8 +140,18 @@ namespace ProjectF.Presentation.Common
             }
         }
 
-        /// <summary>Rebuilds the grid from the CURRENT confirmed inventory
-        /// (called on open + on every AvatarUpdated while open).</summary>
+        /// <summary>Stage 11: optimistic overlay moved — re-render from the
+        /// merged inventory (eats decrement counts instantly).</summary>
+        private void OnMergedUpdated(AvatarSnapshot merged)
+        {
+            if (view is { IsOpen: true })
+            {
+                Rebuild(merged.Inventory);
+            }
+        }
+
+        /// <summary>Rebuilds the grid from the CURRENT merged inventory
+        /// (called on open + on every update while open).</summary>
         public void Rebuild(IReadOnlyDictionary<int, long>? inventory = null)
         {
             if (view is null)
@@ -149,7 +168,11 @@ namespace ProjectF.Presentation.Common
                 return; // boot not finished — window opened pre-tables (rare)
             }
 
-            inventory ??= state.Current?.Inventory;
+            if (inventory is null)
+            {
+                inventory = optimistic.Current?.Inventory;
+            }
+
             if (inventory is null)
             {
                 return;
@@ -219,8 +242,8 @@ namespace ProjectF.Presentation.Common
                 eat.gameObject.SetActive(true);
                 eat.onClick.RemoveAllListeners();
                 eat.onClick.AddListener(() => EatAsync(itemId).Forget());
-                eat.interactable = !isEating
-                    && (state.Current?.Stamina ?? 0) < (state.Current?.MaxStamina ?? 0);
+                eat.interactable = !isEating && connection.CanSubmit
+                    && (optimistic.Current?.Stamina ?? 0) < (optimistic.Current?.MaxStamina ?? 0);
             }
             else
             {
@@ -235,19 +258,26 @@ namespace ProjectF.Presentation.Common
                 return;
             }
 
+            if (!connection.CanSubmit)
+            {
+                toasts.Warning(connection.BlockedReason());
+                return;
+            }
+
             isEating = true;
             try
             {
-                IDisposable pending = toasts.ShowPending(loc.Get("TOAST_ACTION_PENDING"));
-                bool ok;
-                try
-                {
-                    ok = await actions.SubmitAsync(new ProjectF.Lib.Actions.EatFoodAction(foodItemId));
-                }
-                finally
-                {
-                    pending.Dispose();
-                }
+                // Optimistic guess: item −1, stamina +restore (table lookup,
+                // capped at MaxStamina by the merge). The exact restore value
+                // is confirmed by the chain; reconciliation guards drift.
+                long restore = RestoreFor(foodItemId);
+                (bool ok, string reason) = await actions.SubmitWithGuessAsync(
+                    new ProjectF.Lib.Actions.EatFoodAction(foodItemId),
+                    guess: g =>
+                    {
+                        g.Item(foodItemId, -1);
+                        g.Stamina(restore);
+                    });
 
                 if (ok)
                 {
@@ -255,13 +285,39 @@ namespace ProjectF.Presentation.Common
                 }
                 else
                 {
-                    toasts.Error(loc.Get("ERR_UNKNOWN"));
+                    toasts.Error(ErrorMapper.Localize(reason));
                 }
             }
             finally
             {
                 isEating = false;
             }
+        }
+
+        /// <summary>Display-only restore estimate from the recipe tables
+        /// (great variant restores more). 0 when tables are not loaded — the
+        /// guess then shows only the item disappearing until confirmation.</summary>
+        private long RestoreFor(int foodItemId)
+        {
+            if (!tables.IsLoaded)
+            {
+                return 0;
+            }
+
+            foreach (ProjectF.Tables.Recipe candidate in tables.Tables.TbRecipe.DataList)
+            {
+                if (candidate.ResultItemId == foodItemId)
+                {
+                    return candidate.StaminaRestore;
+                }
+
+                if (candidate.GreatResultItemId == foodItemId)
+                {
+                    return candidate.GreatStaminaRestore;
+                }
+            }
+
+            return 0;
         }
 
         private void EnsureTabs()

@@ -124,6 +124,8 @@ namespace ProjectF.Presentation.Shop
         private readonly LocalizationService loc;
         private readonly SpriteRegistry sprites;
         private readonly IToastService toasts;
+        private readonly OptimisticState optimistic;
+        private readonly ChainConnectionMonitor connection;
 
         private ShopWindow? view;
         private StateWatcher? boundWatcher;
@@ -155,7 +157,9 @@ namespace ProjectF.Presentation.Shop
             UnityTableService tables,
             LocalizationService loc,
             SpriteRegistry sprites,
-            IToastService toasts)
+            IToastService toasts,
+            OptimisticState optimistic,
+            ChainConnectionMonitor connection)
         {
             actions = actionQueue;
             state = stateWatcher;
@@ -163,6 +167,8 @@ namespace ProjectF.Presentation.Shop
             this.loc = loc;
             this.sprites = sprites;
             this.toasts = toasts;
+            this.optimistic = optimistic;
+            this.connection = connection;
         }
 
         public void Attach(ShopWindow window)
@@ -176,6 +182,9 @@ namespace ProjectF.Presentation.Shop
             view = window;
             boundWatcher = state;
             boundWatcher.AvatarUpdated += OnAvatarUpdated;
+            // Stage 11: the optimistic overlay re-renders the window the
+            // instant a guess is applied/rolled back (not only on blocks).
+            optimistic.MergedUpdated += OnAvatarUpdated;
 
             window.BuyTabButton.GetComponent<Button>()?.onClick.AddListener(() =>
             {
@@ -213,6 +222,7 @@ namespace ProjectF.Presentation.Shop
                 boundWatcher = null;
             }
 
+            optimistic.MergedUpdated -= OnAvatarUpdated;
             view = null;
         }
 
@@ -232,12 +242,13 @@ namespace ProjectF.Presentation.Shop
             }
 
             return selectedItemId != 0
-                ? (int)Math.Min(int.MaxValue, state.Current?.GetItemCount(selectedItemId) ?? 0)
+                ? (int)Math.Min(int.MaxValue, optimistic.Current?.GetItemCount(selectedItemId) ?? 0)
                 : 1;
         }
 
         /// <summary>Rebuilds both the row list and the footer from the
-        /// CURRENT confirmed snapshot.</summary>
+        /// CURRENT merged view (confirmed + optimistic overlay) — numbers
+        /// move the instant the player clicks.</summary>
         public void Rebuild()
         {
             if (view is null || !tables.IsLoaded)
@@ -246,7 +257,7 @@ namespace ProjectF.Presentation.Shop
             }
 
             GeneratedTables table = tables.Tables;
-            AvatarSnapshot? snap = state.Current;
+            AvatarSnapshot? snap = optimistic.Current;
             ClearRows();
 
             if (sellTab)
@@ -283,7 +294,7 @@ namespace ProjectF.Presentation.Shop
                 {
                     selectedItemId = item.Id;
                     quantity = ShopLogic.ClampQuantity(quantity, 99);
-                    RefreshFooter(table, state.Current);
+                    RefreshFooter(table, optimistic.Current);
                 });
 
                 if (selectedItemId == item.Id)
@@ -321,7 +332,7 @@ namespace ProjectF.Presentation.Shop
                 {
                     selectedItemId = item.Id;
                     quantity = ShopLogic.ClampQuantity(quantity, MaxQuantity());
-                    RefreshFooter(table, state.Current);
+                    RefreshFooter(table, optimistic.Current);
                 });
 
                 if (selectedItemId == item.Id)
@@ -371,34 +382,47 @@ namespace ProjectF.Presentation.Shop
                 return;
             }
 
+            // Stage 11 gate: refuse clearly when Stalled/Offline instead of a
+            // silent 30s timeout.
+            if (!connection.CanSubmit)
+            {
+                toasts.Warning(connection.BlockedReason());
+                return;
+            }
+
             isBuying = true;
             try
             {
-                IDisposable pending = toasts.ShowPending(loc.Get("TOAST_ACTION_PENDING"));
-                try
-                {
-                    bool ok = sellTab
-                        ? await actions.SubmitAsync(new SellItemAction(selectedItemId, quantity))
-                        : await actions.SubmitAsync(new BuyItemAction(
-                            ShopEntryIdFor(tables.Tables, selectedItemId), quantity));
+                ProjectF.Tables.Item? item =
+                    tables.Tables.TbItem.GetOrDefault(selectedItemId);
+                int basePrice = item?.BasePrice ?? 0;
 
-                    if (ok)
-                    {
-                        // Refresh = StateWatcher fires AvatarUpdated on the new
-                        // tip, which re-enters Rebuild via OnAvatarUpdated.
-                        toasts.Success(loc.Get(sellTab ? "SHOP_SOLD" : "SHOP_BOUGHT"));
-                    }
-                    else
-                    {
-                        // Stage 11 carries structured reasons; Stage 10 maps
-                        // what ActionQueue surfaced (raw reason → ErrorMapper
-                        // when the failure came from on-chain validation).
-                        toasts.Error(loc.Get("ERR_UNKNOWN"));
-                    }
-                }
-                finally
+                (bool ok, string reason) = sellTab
+                    ? await actions.SubmitWithGuessAsync(
+                        new SellItemAction(selectedItemId, quantity),
+                        guess: g =>
+                        {
+                            g.Item(selectedItemId, -quantity);
+                            g.Gold(ShopLogic.SellGold(basePrice, quantity));
+                        })
+                    : await actions.SubmitWithGuessAsync(
+                        new BuyItemAction(
+                            ShopEntryIdFor(tables.Tables, selectedItemId), quantity),
+                        guess: g =>
+                        {
+                            g.Gold(-(long)basePrice * quantity);
+                            g.Item(selectedItemId, quantity);
+                        });
+
+                if (ok)
                 {
-                    pending.Dispose();
+                    toasts.Success(loc.Get(sellTab ? "SHOP_SOLD" : "SHOP_BOUGHT"));
+                }
+                else
+                {
+                    // The guess was already rolled back (OptimisticState
+                    // raised OnRolledBack → rollback toast + numbers restored).
+                    toasts.Error(ErrorMapper.Localize(reason));
                 }
             }
             finally

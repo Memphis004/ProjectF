@@ -32,6 +32,9 @@ UI_EMPTY_INVENTORY,ยังไม่มีของ — ไปตกปลา�
 TOAST_CHAIN_OFFLINE,เชนเชื่อมต่อไม่ได้ โหมดอ่านอย่างเดียว
 TOAST_PRESENCE_OFFLINE,ฮับล่ม โหมดผู้เล่นเดี่ยว
 TOAST_ACTION_PENDING,กำลังรอบล็อกยืนยัน…
+TOAST_CHAIN_STALLED,เชนหยุดนิ่ง ไม่มีบล็อกใหม่ — ส่งรายการไม่ได้ชั่วคราว
+ROLLBACK_TOAST,ยกเลิกรายการ: {0}
+ROLLBACK_RECONCILED,ค่าที่แสดงไม่ตรงกับเชน
 # Items (data/item.csv name_key)
 ITEM_NAME_BAIT_WORM,หนอน
 ITEM_NAME_BAIT_SHRIMP,กุ้งฝอย

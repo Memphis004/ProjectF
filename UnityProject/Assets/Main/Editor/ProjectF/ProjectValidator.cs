@@ -335,6 +335,27 @@ namespace ProjectF.Editor
             }
         }
 
+        /// <summary>Stage 11: the per-scene HUD must carry the full field set,
+        /// including the optimistic pending badge — a null pendingLabel would
+        /// silently hide the "…n" indicator the UX contract promises.</summary>
+        private static void ValidateHudPendingBadge(Scene scene, string name, ValidationReport report)
+        {
+            HudView? hud = scene.GetRootGameObjects()
+                .SelectMany(go => go.GetComponentsInChildren<HudView>(true))
+                .FirstOrDefault();
+            if (hud is null)
+            {
+                return; // already reported as "no HudView instance" upstream
+            }
+
+            SerializedObject so = new(hud);
+            if (so.FindProperty("pendingLabel")?.objectReferenceValue is null)
+            {
+                report.Error($"{name}: HudView.pendingLabel is not assigned — " +
+                             "run Generate Prefabs (Stage 11 pending badge missing).");
+            }
+        }
+
         private static void ValidateGameplayScene(Scene scene, string name, ValidationReport report)
         {
             List<LifetimeScope> scopes = FindScopes(scene);
@@ -388,6 +409,9 @@ namespace ProjectF.Editor
                             "runtime re-parents it under UIRoot's HUD layer, but the saved " +
                             "state should be a bare tree (run Generate Scenes).");
             }
+
+            // Stage 11: the optimistic pending badge must be wired too.
+            ValidateHudPendingBadge(scene, name, report);
         }
 
         /// <summary>Every serialized object reference on a scope must be

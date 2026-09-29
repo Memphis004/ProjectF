@@ -22,6 +22,11 @@ namespace ProjectF.Infrastructure.Blockchain
         /// <summary>Current local tip hash, hex (empty before bootstrap).</summary>
         string TipHash { get; }
 
+        /// <summary>Stage 11: parent hash of the current tip, hex (empty for
+        /// genesis / before bootstrap). Lets StateWatcher verify that a new
+        /// tip actually EXTENDS the previous one — the reorg check.</summary>
+        string TipPreviousHash { get; }
+
         ChainStatus Status { get; }
 
         /// <summary>Peer count from the swarm (0 when offline).</summary>
