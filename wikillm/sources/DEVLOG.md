@@ -433,3 +433,46 @@ idle steady-state กลับมา **173 = baseline เป๊ะ** — ⚠️ 
   handler วิ่งบน thread ไหน และครั้งแรกที่ subscriber แตะ Unity API มันจะระเบิด
   เป็น log spam แทน error ชัด ๆ
 
+## 9.8 SeedNode dead-peer window 60s→~15s + กับดัก appsettings.json (2026-09-30)
+
+อาการ: kill peer แบบ hard แล้ว seed ถือ peer ศพไว้ ~70s (first ERR +2s,
+`Peers: 0` ช้า ~66-71s) — log NetMQ ERR ล้นช่วงนั้นด้วย
+
+- **Reflect จาก assembly จริง (Libplanet.Net 5.5.3) ไม่เดา:** ตัวกำหนด
+  dead-peer window คือ `SwarmOptions.RefreshLifespan` (default **00:01:00**)
+  คู่กับ `RefreshPeriod` (00:00:10) ส่วน `TimeoutOptions.MaxTimeout`
+  (00:02:30) / `DialTimeout` (00:00:01) คุมความเร็วที่ Ping จะ fail วิธีเดียวกับ
+  หัวข้อ 8.5 — dotnet scratch project + reflection dump properties/defaults
+- **Expose เป็น config:** `SeedNode:RefreshPeriod/RefreshLifespan/MaxTimeout/
+  DialTimeout` (nullable TimeSpan — ไม่ set = default Libplanet) bind ใน
+  SwarmRunner; พิสูจน์ว่า binder รับ nullable TimeSpan จาก JSON ได้ด้วย scratch
+  test ก่อนสรุปว่าบักอยู่ที่ไหน
+- **⚠️ กับดัก appsettings.json:** csproj เดิมไม่มี `CopyToOutputDirectory`
+  → ไฟล์ไม่เคยถูก copy ไป `bin/...` (และ `AddJsonFile(optional: true)` เงียบ
+  ทั้งที่หาไม่เจอ) ทุกค่าในไฟล์จึง **inert มาตลอด** — ตรวจง่าย ๆ: `ls bin/.../
+  appsettings.json` + log ค่า effective ตอน boot (`[options] ...`)
+- **⚠️ กับดัก build:** แก้โค้ดทั้งที่ seed ยังรันอยู่ → `dotnet build`
+  "สำเร็จ" แต่ **copy dll ไม่ได้** (ไฟล์ถูก lock) — รอบวัดสองรอบแรกรัน binary
+  เก่าโดยไม่รู้ตัว (65s เท่าเดิม + ไม่เห็น log ใหม่) กฎ: kill process ก่อน
+  build แล้วยืนยัน dll timestamp / log ใหม่ก่อนเก็บผล
+- **พยาน (kill follower hard, seed status loop ใส่ timestamp):**
+
+  | RefreshLifespan | kill → Peers: 0 | false drop (window 75-100s) |
+  |---|---|---|
+  | 60s (default) | ~66-71s | — |
+  | 15s | ~25-31s | ไม่มี |
+  | 10s | ~20s | ไม่มี |
+  | 5s | **~15s** | ไม่มี |
+
+  First ERR ยัง +2s ทุกรอบ (เป็น send-fail detection ของ Libplanet เอง —
+  ลดไม่ได้ด้วย config) ชั้น removal ต้องรอ refresh cycle (5s) + ping fail +
+  status sampling (5s) จึงมี floor ~15s
+- **Serilog filter:** drop เฉพาะ event จาก
+  `Libplanet.Net.Transports.NetMQTransport` ที่ exception (รวม inner) เป็น
+  TaskCanceled/OperationCanceled/Timeout — error อื่น/source อื่นยัง log
+  (เดิม timeout-noise พ่น ERR เป็นสิบต่อนาทีช่วง peer ตาย)
+- **ค่าที่ ship:** `RefreshLifespan: 00:00:05` (removal ~15s เร็วขึ้น 4x) —
+  ถ้าขึ้น production กับ peer ข้ามเครือข่ายจริง แนะนำคืนไป 10-15s (กัน live peer
+  ที่ GC pause/เน็ตสะดุด >1s โดน ping fail ตัดทิ้ง แล้วต้องรอ re-discovery ผ่าน
+  StaticPeers) (commit `fb05a29`)
+
