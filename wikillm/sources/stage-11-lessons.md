@@ -127,6 +127,49 @@ what broke, and the traps worth keeping.
   `.freebuff/e2e/chain_e2e_pass.png`.
 - Teardown: play stopped, seed+hub killed (0 dotnet processes).
 
+## Phases 5–6 + sync HUD postscript (same session, second commit)
+
+- **E2E grew to 8 phases** (0 create_avatar, 1 buy, 2 fish, 3 unlock, 4
+  craft, 5 EAT, 6 TASKBOARD reroll+submit, ALL PASS at tip #3381). Eat
+  asserts food −1 AND stamina non-decreasing — the exact +15 is polluted by
+  the 1/block SyncStamina regen, so "restore ≥ 0, capped" is the honest
+  delta. Taskboard: the 600-block lazy reroll gate means a rerun may find a
+  LIVE board — reroll only when `Tasks.Count == 0` or
+  `BlockIndex − TasksLastRerolledAt >= 600`; pick the first incomplete task
+  (prefer one already satisfiable), source materials by category (fish
+  3001–3009 → cast loop with bait top-up; food 7001–7009 → recipe 1 after
+  sourcing fish+salt; else shop), assert gold + RewardGold exactly and the
+  board flag flips to done.
+- **Swarm.Peers is IReadOnlyList<BoundPeer> — there is NO per-peer tip on
+  it.** `PeerState.BestKnownTip` does not exist in 5.5.3 (CS0030/CS1061
+  within one refresh). The peer-tip API is
+  `await swarm.GetPeerChainStateAsync(dialTimeout, ct)` →
+  `PeerChainState.TipIndex` (verified against docs.libplanet.io/5.5.3 —
+  no XML docs ship with the DLLs).
+- **Sync HUD (kiosk-free)**: `ILibplanetClient.SyncProgress` (Tip /
+  TargetTip / HasTarget — display-only struct) fed by a 1s background
+  sampler that adopts the highest peer tip (`Volatile.Write`; failures are
+  swallowed — cosmetic only). `HudPresenter` gained an `ILibplanetClient`
+  ctor param and a 500ms poll loop rendering the SyncLabel (top-center):
+  "Syncing N / M" ONLY while HasTarget (behind the peer tip), plain
+  "Syncing" while Bootstrapping, HIDDEN at rest — plus it now drives
+  SetChainStatus (nothing else did). VContainer auto-injects the root-
+  registered client into the 4 scene scopes — no registration edits.
+  Generator adds the SyncLabel row + wires `syncLabel`; loc key
+  UI_SYNC_PROGRESS ("ซิงค์ {0} / {1}"). Verified: probe at rest shows
+  `tip=3457 target=3456 hasTarget=False`, 0 NREs after a full catch-up.
+- **A second Unity instance silently fights for the project.** Mid-session
+  the MCP CLI degraded to "Failed … after 10 retries" while a hidden
+  duplicate editor held the lock. Fix: kill ALL Unity.exe, remove
+  Temp/UnityLockfile, relaunch ONCE; then check the log for stale-tag
+  discipline again (fresh session = fresh Editor.log).
+- **CI**: `tools/ci-chain-e2e.sh` — builds seed+hub (embed tables!), boots
+  them via nohup, wipes the client store, enters play, polls Editor.log for
+  "bootstrap done" (up to 30 min), dispatches the harness, verdicts on the
+  post-dispatch `[ce2e]` tail (line-offset capture so reruns never confuse
+  runs), tears down by port PID. Flags: SKIP_BOOTSTRAP=1 (reuse running
+  infra), TEARDOWN=0 (keep alive for debugging). Exit 0 only on ALL PASS.
+
 ## Postscript
 
 Suggested entity seeds: UnlockKitchenAction, ShopEntryIdFor,

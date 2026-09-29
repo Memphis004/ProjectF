@@ -41,6 +41,12 @@ namespace ProjectF.Infrastructure.Blockchain
         /// <summary>Reads a raw Bencodex value from an account at the current tip.</summary>
         IValue? GetState(in Libplanet.Crypto.Address account, in Libplanet.Crypto.Address key);
 
+        /// <summary>Display-only catch-up estimate (Stage 11): 0 when the seed
+        /// tip is unknown (renders the honest "block N" fallback), otherwise
+        /// the highest peer tip seen this session. NEVER gates gameplay —
+        /// Spec 9.4 keeps progress optional and purely cosmetic.</summary>
+        SyncProgress SyncProgress { get; }
+
         /// <summary>
         /// Signs (player key) + stages the action's PlainValue and waits until a
         /// mined block executes it. Throws on validation failures (the action

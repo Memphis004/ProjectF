@@ -74,6 +74,7 @@ namespace ProjectF.Editor
                 "UI_CHAIN_SYNCED", "UI_CHAIN_SYNCING", "UI_CHAIN_BOOTSTRAPPING",
                 "UI_CHAIN_OFFLINE", "UI_PRESENCE_ONLINE", "UI_PRESENCE_OFFLINE",
                 "UI_LOADING", "UI_LOADING_SYNCING_BLOCK", "UI_LOADING_SYNCING_BLOCK_TOTAL",
+                "UI_SYNC_PROGRESS",
                 "UI_CONFIRM", "UI_CANCEL", "UI_INVENTORY",
                 "UI_TAB_ALL", "UI_TAB_BAIT", "UI_TAB_ROD", "UI_TAB_FISH",
                 "UI_TAB_SEED", "UI_TAB_CROP", "UI_TAB_MATERIAL", "UI_TAB_FOOD",

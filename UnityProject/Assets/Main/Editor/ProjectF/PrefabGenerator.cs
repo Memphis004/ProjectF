@@ -479,6 +479,11 @@ namespace ProjectF.Editor
                 AddHudText(canvas, "SceneLabel", 166f, -3f, 150f, 10f, TextAnchor.UpperRight);
                 AddHudText(canvas, "TipLabel", 166f, -13f, 150f, 9f, TextAnchor.UpperRight);
 
+                // Stage 11: catch-up line, TOP CENTER (hidden at rest — the
+                // presenter toggles it only while actually syncing N / M).
+                AddHudText(canvas, "SyncLabel", 90f, -3f, 140f, 9f, TextAnchor.UpperCenter)
+                    .gameObject.SetActive(false);
+
                 // Status dots — 8x8 squares top-right under the tip label.
                 AddHudBar(canvas, "ChainStatusDot", 296f, -24f, 8f, 8f,
                     new Color(0.85f, 0.30f, 0.25f));
@@ -512,6 +517,8 @@ namespace ProjectF.Editor
                     canvas.transform.Find("ChainStatusDot")!.GetComponent<Image>();
                 so.FindProperty("presenceStatusDot")!.objectReferenceValue =
                     canvas.transform.Find("PresenceStatusDot")!.GetComponent<Image>();
+                so.FindProperty("syncLabel")!.objectReferenceValue =
+                    canvas.transform.Find("SyncLabel")!.GetComponent<Text>();
                 so.ApplyModifiedPropertiesWithoutUndo();
 
                 SavePrefab(canvas, "Hud");

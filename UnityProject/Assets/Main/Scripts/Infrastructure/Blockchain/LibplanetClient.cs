@@ -10,6 +10,7 @@ using Bencodex.Types;
 using Libplanet.Action;
 using Libplanet.Action.Loader;
 using Libplanet.Blockchain;
+using Libplanet.Net;
 using Libplanet.Blockchain.Policies;
 using Libplanet.Crypto;
 using Libplanet.Net;
@@ -53,6 +54,10 @@ namespace ProjectF.Infrastructure.Blockchain
         private Swarm? _swarm;
         private CancellationTokenSource? _swarmCts;
 
+        /// <summary>Highest peer tip observed this session (Volatile long —
+        /// written by the sampler task, read by UI); 0 when unknown.</summary>
+        private long _peerTipTarget;
+
         public long TipIndex => _chain?.Tip.Index ?? 0L;
 
         public string TipHash => _chain?.Tip.Hash.ToString() ?? string.Empty;
@@ -60,6 +65,24 @@ namespace ProjectF.Infrastructure.Blockchain
         public ChainStatus Status { get; private set; } = ChainStatus.Bootstrapping;
 
         public int PeerCount => _swarm?.Peers.Count ?? 0;
+
+        /// <summary>Display-only catch-up estimate. The seed tip is sampled
+        /// every ~1s on the threadpool while connected (BestKnownTip is
+        /// thread-safe); consumers may read it from any thread.</summary>
+        public SyncProgress SyncProgress
+        {
+            get
+            {
+                long tip = TipIndex;
+                long target = _peerTipTarget;
+                return new SyncProgress
+                {
+                    Tip = tip,
+                    TargetTip = target,
+                    HasTarget = target > tip,
+                };
+            }
+        }
 
         public string PlayerAddress => _playerKey?.Address.ToString() ?? string.Empty;
 
@@ -220,6 +243,11 @@ namespace ProjectF.Infrastructure.Blockchain
             _swarmCts = new CancellationTokenSource();
             _ = Task.Run(() => _swarm.StartAsync(_swarmCts.Token), _swarmCts.Token);
 
+            // Sample the seed's tip in the background so the UI can render an
+            // honest "N / M" during catch-up. Pure display — a failure here
+            // never affects sync (PreloadAsync decides what to pull).
+            _ = Task.Run(() => PeerTipSamplerAsync(_swarmCts.Token));
+
             if (!_swarm.WaitForRunningAsync().Wait(TimeSpan.FromSeconds(15)))
             {
                 Debug.LogWarning("[chain] swarm transport did not start in 15s — continuing offline.");
@@ -279,6 +307,51 @@ namespace ProjectF.Infrastructure.Blockchain
             Status = PeerCount > 0 ? ChainStatus.Syncing : ChainStatus.Offline;
             Debug.Log($"[chain] bootstrap done — tip #{TipIndex}, peers {PeerCount}, status {Status}");
             return Status;
+        }
+
+        /// <summary>Background sampler: every second, dial connected peers
+        /// and adopt the highest PeerChainState.TipIndex as the display-only
+        /// catch-up target. Exits with the swarm session (lifetime token).
+        /// API verified against Libplanet 5.5.3 docs (Swarm.Peers is a plain
+        /// BoundPeer list — chain heights only come from
+        /// GetPeerChainStateAsync).</summary>
+        private async Task PeerTipSamplerAsync(CancellationToken ct)
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    Swarm? swarm = _swarm;
+                    if (swarm is { } && swarm.Running)
+                    {
+                        IEnumerable<Libplanet.Net.PeerChainState> states =
+                            await swarm.GetPeerChainStateAsync(TimeSpan.FromSeconds(5), ct);
+                        long best = 0;
+                        foreach (Libplanet.Net.PeerChainState state in states)
+                        {
+                            best = Math.Max(best, state.TipIndex);
+                        }
+
+                        if (best > 0)
+                        {
+                            Volatile.Write(ref _peerTipTarget, best);
+                        }
+                    }
+                }
+                catch
+                {
+                    // Cosmetic only — never let the sampler throw.
+                }
+
+                try
+                {
+                    await Task.Delay(1000, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
         }
 
         public IValue? GetState(in Address account, in Address key)
@@ -416,5 +489,21 @@ namespace ProjectF.Infrastructure.Blockchain
             {
             }
         }
+    }
+
+    /// <summary>Display-only catch-up estimate for progress UI (spec 9.4 keeps
+    /// this optional — "N / M" renders only while a peer-tip target is known;
+    /// UI falls back to the honest "block N" line otherwise). NEVER used for
+    /// gameplay decisions — the chain stays the sole authority.</summary>
+    public readonly struct SyncProgress
+    {
+        /// <summary>Local tip index (0 before bootstrap).</summary>
+        public long Tip { get; init; }
+
+        /// <summary>Highest peer tip seen this session; 0 when unknown.</summary>
+        public long TargetTip { get; init; }
+
+        /// <summary>True while the local tip is behind the known target.</summary>
+        public bool HasTarget { get; init; }
     }
 }

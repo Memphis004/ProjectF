@@ -104,3 +104,4 @@ KITCHEN_RESULT_GREAT,อาหารสุดเด็ด!
 EAT_DONE,กินแล้ว แรงฟื้นแล้ว
 KITCHEN_UNLOCK,ปลดล็อกครัว
 KITCHEN_UNLOCKED,ปลดล็อกครัวสำเร็จ
+UI_SYNC_PROGRESS,ซิงค์ {0} / {1}

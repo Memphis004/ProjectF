@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using ProjectF.Infrastructure.Blockchain;
 using ProjectF.Infrastructure.Network;
 using ProjectF.Infrastructure.UI;
@@ -50,6 +52,12 @@ namespace ProjectF.Presentation.Common
         [SerializeField]
         private Image presenceStatusDot = default!;
 
+        /// <summary>Stage 11: kiosk-free sync line (top center) — shows
+        /// "Syncing N / M" ONLY while actually catching up; hidden otherwise
+        /// so it can never crowd the HUD at rest.</summary>
+        [SerializeField]
+        private Text syncLabel = default!;
+
         public Text NameLabel => nameLabel;
         public Text StaminaLabel => staminaLabel;
         public Image StaminaBar => staminaBar;
@@ -61,6 +69,7 @@ namespace ProjectF.Presentation.Common
         public Text TipLabel => tipLabel;
         public Image ChainStatusDot => chainStatusDot;
         public Image PresenceStatusDot => presenceStatusDot;
+        public Text SyncLabel => syncLabel;
     }
 
     /// <summary>HUD PRESENTER — binds <see cref="StateWatcher"/> and presence
@@ -85,15 +94,22 @@ namespace ProjectF.Presentation.Common
         private readonly HudView view;
         private readonly IPresenceClient presence;
         private readonly LocalizationService loc;
+        private readonly ILibplanetClient chain;
 
         private StateWatcher? watcher;
         private bool bound;
+        private CancellationTokenSource? syncCts;
 
-        public HudPresenter(HudView view, IPresenceClient presence, LocalizationService loc)
+        public HudPresenter(
+            HudView view,
+            IPresenceClient presence,
+            LocalizationService loc,
+            ILibplanetClient chain)
         {
             this.view = view;
             this.presence = presence;
             this.loc = loc;
+            this.chain = chain;
         }
 
         /// <summary>Re-binds to the state watcher (called on every scene start).</summary>
@@ -118,6 +134,64 @@ namespace ProjectF.Presentation.Common
             }
 
             OnPresenceStatus(presence.Status);
+
+            // Stage 11: non-blocking catch-up line. Pure polling display —
+            // no input gating, gameplay never waits on sync (spec 9.4).
+            if (syncCts is null && view.SyncLabel is { })
+            {
+                syncCts = new CancellationTokenSource();
+                SyncLoopAsync(syncCts.Token).Forget();
+            }
+        }
+
+        private async UniTaskVoid SyncLoopAsync(CancellationToken ct)
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    await UniTask.Delay(500, cancellationToken: ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                RenderSync();
+            }
+        }
+
+        /// <summary>Renders the catch-up line + keeps the chain dot honest
+        /// (nothing else calls SetChainStatus today). The line shows ONLY
+        /// while a peer-tip target is known and ahead of us — at rest it
+        /// disappears, bootstrapping without a target degrades to "Syncing".</summary>
+        private void RenderSync()
+        {
+            SetChainStatus(chain.Status);
+
+            Text? label = view.SyncLabel;
+            if (label is null)
+            {
+                return;
+            }
+
+            SyncProgress sp = chain.SyncProgress;
+            if (chain.Status != ChainStatus.Offline && sp.HasTarget)
+            {
+                label.gameObject.SetActive(true);
+                label.text = loc.Get("UI_SYNC_PROGRESS")
+                    .Replace("{0}", sp.Tip.ToString())
+                    .Replace("{1}", sp.TargetTip.ToString());
+            }
+            else if (chain.Status == ChainStatus.Bootstrapping)
+            {
+                label.gameObject.SetActive(true);
+                label.text = loc.Get("UI_CHAIN_SYNCING");
+            }
+            else
+            {
+                label.gameObject.SetActive(false);
+            }
         }
 
         private void OnAvatar(AvatarSnapshot snapshot)
@@ -242,6 +316,9 @@ namespace ProjectF.Presentation.Common
             }
 
             presence.StatusChanged -= OnPresenceStatus;
+            syncCts?.Cancel();
+            syncCts?.Dispose();
+            syncCts = null;
         }
     }
 }
