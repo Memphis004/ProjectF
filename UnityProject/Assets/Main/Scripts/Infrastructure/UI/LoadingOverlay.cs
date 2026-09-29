@@ -1,5 +1,8 @@
 using Cysharp.Threading.Tasks;
 using UnityEngine;
+using TMPro;
+using TMPro;
+
 using UnityEngine.UI;
 
 // ReSharper disable CheckNamespace
@@ -18,14 +21,14 @@ namespace ProjectF.Infrastructure.UI
         private Image dim = default!;
 
         [SerializeField]
-        private Text titleLabel = default!;
+        private TMP_Text titleLabel = default!;
 
         [SerializeField]
-        private Text progressLabel = default!;
+        private TMP_Text progressLabel = default!;
 
         public Image Dim => dim;
-        public Text TitleLabel => titleLabel;
-        public Text ProgressLabel => progressLabel;
+        public TMP_Text TitleLabel => titleLabel;
+        public TMP_Text ProgressLabel => progressLabel;
 
         private void Awake()
         {
@@ -93,7 +96,7 @@ namespace ProjectF.Infrastructure.UI
         /// "syncing block N / M" (the "1234 / 1717" shape).</summary>
         public void SetProgress(long? current, long? total)
         {
-            Text? label = view?.ProgressLabel;
+            TMP_Text? label = view?.ProgressLabel;
             if (label is null)
             {
                 return;

@@ -8,6 +8,7 @@ using ProjectF.Infrastructure.UI;
 using ProjectF.Presentation.Common;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -97,6 +98,7 @@ namespace ProjectF.Editor
             ValidateItemIcons(report);
             ValidateUiPrefabs(report);
             ValidateLocalization(report);
+            ValidateTextMeshPro(report);
             return report;
         }
 
@@ -565,6 +567,103 @@ namespace ProjectF.Editor
                     report.Error($"Localization {lang}.csv missing {missing.Count} key(s): " +
                                  string.Join(", ", missing.Take(8)) +
                                  (missing.Count > 8 ? "…" : string.Empty));
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // 6) TMP migration (Stage 16): no legacy text components anywhere in
+        // generated content; every TMP component uses the Thai-capable font.
+        // ------------------------------------------------------------------
+
+        /// <summary>Thai sample every TMP text must be able to render —
+        /// covers the tone marks/vowels that made the legacy font fail.</summary>
+        private const string ThaiSample = TmpFontGenerator.ThaiSample;
+
+        private static void ValidateTextMeshPro(ValidationReport report)
+        {
+            // a) font asset exists + dynamic (Thai glyphs rasterize on demand)
+            TMP_FontAsset sarabun = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(
+                "Assets/Main/Fonts/Sarabun SDF.asset");
+            if (sarabun is null)
+            {
+                report.Error("TMP: Assets/Main/Fonts/Sarabun SDF.asset missing — " +
+                             "run ProjectF/Setup/Generate Thai TMP Font Asset.");
+                return;
+            }
+
+            if (sarabun.atlasPopulationMode != AtlasPopulationMode.Dynamic)
+            {
+                report.Error("TMP: Sarabun SDF is not Dynamic — Thai glyphs would " +
+                             "be missing from a static atlas.");
+            }
+
+            // b) it IS the TMP default
+            TMP_Settings settings = Resources.Load<TMP_Settings>("TMP Settings");
+            if (settings is null)
+            {
+                report.Error("TMP: TMP Settings.asset not found (essentials not imported?).");
+            }
+            else if (TMP_Settings.defaultFontAsset != sarabun)
+            {
+                report.Error("TMP: default font asset is not Sarabun SDF — " +
+                             "re-run the Thai TMP font generator.");
+            }
+
+            // c) glyph coverage: the Thai sample resolves real characters
+            foreach (char ch in ThaiSample.Where(c => !char.IsWhiteSpace(c)))
+            {
+                if (!sarabun.HasCharacter(ch, searchFallbacks: false))
+                {
+                    report.Error($"TMP: Sarabun SDF lacks glyph U+{(int)ch:X4} '{ch}' " +
+                                 $"(sample '{ThaiSample}').");
+                    break; // one error is enough — the font is wrong, not chars
+                }
+            }
+
+            // d) every generated prefab/scene: no legacy Text/InputField/
+            //    Dropdown, and every TMP component carries the Thai font.
+            string[] roots = { EditorPaths.PrefabRoot, EditorPaths.SceneRoot };
+            foreach (string root in roots)
+            {
+                foreach (string guid in AssetDatabase.FindAssets("t:Prefab t:Scene", new[] { root }))
+                {
+                    string path = AssetDatabase.GUIDToAssetPath(guid);
+                    if (!path.StartsWith(root, StringComparison.Ordinal))
+                    {
+                        continue; // FindAssets matches either type in either folder
+                    }
+
+                    GameObject rootGo = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    if (rootGo is null)
+                    {
+                        continue;
+                    }
+
+                    foreach (Component component in rootGo.GetComponentsInChildren<Component>(true))
+                    {
+                        switch (component)
+                        {
+                            case UnityEngine.UI.Text:
+                                report.Error($"{path}: legacy UnityEngine.UI.Text found — " +
+                                             "regenerate (generators are the source of truth).");
+                                break;
+                            case UnityEngine.UI.InputField:
+                                report.Error($"{path}: legacy InputField found.");
+                                break;
+                            case UnityEngine.UI.Dropdown:
+                                report.Error($"{path}: legacy Dropdown found.");
+                                break;
+                            case TextMeshPro text3d when text3d.font != sarabun:
+                                report.Error($"{path}: TextMeshPro '{text3d.name}' does not " +
+                                             "use Sarabun SDF.");
+                                break;
+                            case TextMeshProUGUI ugui when ugui.font != sarabun:
+                                report.Error($"{path}: TextMeshProUGUI '{ugui.name}' does not " +
+                                             "use Sarabun SDF.");
+                                break;
+                        }
+                    }
                 }
             }
         }

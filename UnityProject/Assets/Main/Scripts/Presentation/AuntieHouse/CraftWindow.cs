@@ -9,6 +9,9 @@ using ProjectF.Infrastructure.UI;
 using ProjectF.Lib.Actions;
 using ProjectF.Presentation.Common;
 using UnityEngine;
+using TMPro;
+using TMPro;
+
 using UnityEngine.UI;
 using GeneratedTables = ProjectF.Tables.Tables;
 
@@ -25,10 +28,10 @@ namespace ProjectF.Presentation.AuntieHouse
         private RectTransform rowList = default!;
 
         [SerializeField]
-        private Text detailLabel = default!;
+        private TMP_Text detailLabel = default!;
 
         [SerializeField]
-        private Text portionsLabel = default!;
+        private TMP_Text portionsLabel = default!;
 
         [SerializeField]
         private Button minusButton = default!;
@@ -40,7 +43,7 @@ namespace ProjectF.Presentation.AuntieHouse
         private Button craftButton = default!;
 
         [SerializeField]
-        private Text craftLabel = default!;
+        private TMP_Text craftLabel = default!;
 
         [SerializeField]
         private GameObject lockedOverlay = default!;
@@ -50,12 +53,12 @@ namespace ProjectF.Presentation.AuntieHouse
 
         public RectTransform RowTemplate => rowTemplate;
         public RectTransform RowList => rowList;
-        public Text DetailLabel => detailLabel;
-        public Text PortionsLabel => portionsLabel;
+        public TMP_Text DetailLabel => detailLabel;
+        public TMP_Text PortionsLabel => portionsLabel;
         public Button MinusButton => minusButton;
         public Button PlusButton => plusButton;
         public Button CraftButton => craftButton;
-        public Text CraftLabel => craftLabel;
+        public TMP_Text CraftLabel => craftLabel;
         public GameObject LockedOverlay => lockedOverlay;
         public Button UnlockButton => unlockButton;
 
@@ -258,10 +261,10 @@ namespace ProjectF.Presentation.AuntieHouse
                     checklist.Add($"{name} {owned}/{count}");
                 }
 
-                Text title = row.Find("Title")!.GetComponent<Text>();
+                TMP_Text title = row.Find("Title")!.GetComponent<TMP_Text>();
                 title.text = loc.Get(recipe.NameKey);
                 title.color = levelOk ? Color.white : new Color(0.55f, 0.55f, 0.55f);
-                row.Find("Materials")!.GetComponent<Text>().text = string.Join(", ", checklist);
+                row.Find("Materials")!.GetComponent<TMP_Text>().text = string.Join(", ", checklist);
 
                 BindRow(row, () =>
                 {

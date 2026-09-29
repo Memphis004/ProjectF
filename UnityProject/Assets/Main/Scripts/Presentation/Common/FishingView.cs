@@ -6,7 +6,9 @@ using ProjectF.Infrastructure.Blockchain;
 using ProjectF.Infrastructure.UI;
 using ProjectF.Lib.Actions;
 using UnityEngine;
-using UnityEngine.UI;
+using TMPro;
+using TMPro;
+
 
 // ReSharper disable CheckNamespace
 namespace ProjectF.Presentation.Common
@@ -15,7 +17,7 @@ namespace ProjectF.Presentation.Common
     public sealed class FishingView : MonoBehaviour
     {
         [SerializeField]
-        private Text statusLabel = default!;
+        private TMP_Text statusLabel = default!;
 
         [SerializeField]
         private GameObject castButton = default!;

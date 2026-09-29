@@ -4,7 +4,10 @@ using UnityEditor;
 using UnityEditor.Animations;
 using ProjectF.Presentation.Common;
 using UnityEngine;
+using TMPro;
+using TMPro;
 using UnityEngine.EventSystems;
+
 using UnityEngine.UI;
 
 // ReSharper disable CheckNamespace
@@ -216,12 +219,15 @@ namespace ProjectF.Editor
                 GameObject nameTagGo = new("NameTag");
                 nameTagGo.transform.SetParent(go.transform, false);
                 nameTagGo.transform.localPosition = new Vector3(0f, 0.9f, 0f);
-                var textMesh = nameTagGo.AddComponent<TextMesh>();
-                textMesh.anchor = TextAnchor.MiddleCenter;
-                textMesh.alignment = TextAlignment.Center;
-                textMesh.fontSize = 24;
-                textMesh.characterSize = 0.05f; // ≈1.2 world units tall
+                // World-space TMP: TextMeshPro (3D) renders Thai via the
+                // Sarabun dynamic font asset (TextMesh could not).
+                var textMesh = nameTagGo.AddComponent<TextMeshPro>();
+                textMesh.text = "...";
+                textMesh.alignment = TextAnchorMapper.Map(TextAnchor.MiddleCenter);
+                textMesh.fontSize = 3;
                 textMesh.color = Color.white;
+                textMesh.font = TmpFontGenerator.Generate();
+                textMesh.raycastTarget = false;
                 NameTagView nameTagView = nameTagGo.AddComponent<NameTagView>();
 
                 // Wire the view's serialized references HERE (Stage 11.5
@@ -512,31 +518,31 @@ namespace ProjectF.Editor
                 HudView hudView = canvas.AddComponent<HudView>();
                 var so = new SerializedObject(hudView);
                 so.FindProperty("nameLabel")!.objectReferenceValue =
-                    canvas.transform.Find("NameLabel")!.GetComponent<Text>();
+                    canvas.transform.Find("NameLabel")!.GetComponent<TMP_Text>();
                 so.FindProperty("staminaLabel")!.objectReferenceValue =
-                    canvas.transform.Find("StaminaLabel")!.GetComponent<Text>();
+                    canvas.transform.Find("StaminaLabel")!.GetComponent<TMP_Text>();
                 so.FindProperty("staminaBar")!.objectReferenceValue =
                     canvas.transform.Find("StaminaBar")!.GetComponent<Image>();
                 so.FindProperty("goldLabel")!.objectReferenceValue =
-                    canvas.transform.Find("GoldLabel")!.GetComponent<Text>();
+                    canvas.transform.Find("GoldLabel")!.GetComponent<TMP_Text>();
                 so.FindProperty("levelLabel")!.objectReferenceValue =
-                    canvas.transform.Find("LevelLabel")!.GetComponent<Text>();
+                    canvas.transform.Find("LevelLabel")!.GetComponent<TMP_Text>();
                 so.FindProperty("fishingExpBar")!.objectReferenceValue =
                     canvas.transform.Find("FishingExpBar")!.GetComponent<Image>();
                 so.FindProperty("cookingExpBar")!.objectReferenceValue =
                     canvas.transform.Find("CookingExpBar")!.GetComponent<Image>();
                 so.FindProperty("sceneLabel")!.objectReferenceValue =
-                    canvas.transform.Find("SceneLabel")!.GetComponent<Text>();
+                    canvas.transform.Find("SceneLabel")!.GetComponent<TMP_Text>();
                 so.FindProperty("tipLabel")!.objectReferenceValue =
-                    canvas.transform.Find("TipLabel")!.GetComponent<Text>();
+                    canvas.transform.Find("TipLabel")!.GetComponent<TMP_Text>();
                 so.FindProperty("chainStatusDot")!.objectReferenceValue =
                     canvas.transform.Find("ChainStatusDot")!.GetComponent<Image>();
                 so.FindProperty("presenceStatusDot")!.objectReferenceValue =
                     canvas.transform.Find("PresenceStatusDot")!.GetComponent<Image>();
                 so.FindProperty("syncLabel")!.objectReferenceValue =
-                    canvas.transform.Find("SyncLabel")!.GetComponent<Text>();
+                    canvas.transform.Find("SyncLabel")!.GetComponent<TMP_Text>();
                 so.FindProperty("pendingLabel")!.objectReferenceValue =
-                    canvas.transform.Find("PendingLabel")!.GetComponent<Text>();
+                    canvas.transform.Find("PendingLabel")!.GetComponent<TMP_Text>();
                 so.ApplyModifiedPropertiesWithoutUndo();
 
                 SavePrefab(canvas, "Hud");
@@ -574,8 +580,8 @@ namespace ProjectF.Editor
                 var revealPanel = AddUiImage(root, "RevealPanel", new Vector2(0f, -40f), 1.6f);
                 revealPanel.gameObject.SetActive(false);
 
-                Text statusLabel = root.transform
-                    .Find("StatusLabel")!.GetComponent<Text>();
+                TMP_Text statusLabel = root.transform
+                    .Find("StatusLabel")!.GetComponent<TMP_Text>();
                 var view = root.AddComponent<FishingView>();
                 var so = new SerializedObject(view);
                 so.FindProperty("statusLabel")!.objectReferenceValue = statusLabel;
@@ -629,18 +635,21 @@ namespace ProjectF.Editor
             return rect;
         }
 
-        private static Text AddHudText(
+        private static TMP_Text AddHudText(
             GameObject parent, string name, float x, float y, float w, float h,
             TextAnchor anchor, int fontSize = 8)
         {
             var rect = CreateHudRow(parent, name, x, y, w, h);
-            Text text = rect.gameObject.AddComponent<Text>();
+            TMP_Text text = rect.gameObject.AddComponent<TextMeshProUGUI>();
             text.text = name;
-            text.alignment = anchor;
+            text.alignment = TextAnchorMapper.Map(anchor);
             text.raycastTarget = false;
             text.color = Color.white;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = fontSize;
+            // Sarabun dynamic SDF (Thai-capable) — shared, generator-created.
+            text.font = TmpFontGenerator.Generate();
+            // TMP point sizes ≈ 1.55x legacy font sizes at the same rect; the
+            // reference canvas is 320x180 pixel-art — keep the visual scale.
+            text.fontSize = Mathf.RoundToInt(fontSize * 1.55f);
             return text;
         }
 
@@ -657,19 +666,19 @@ namespace ProjectF.Editor
             return image;
         }
 
-        private static Text AddUiText(
+        private static TMP_Text AddUiText(
             GameObject parent, string name, Vector2 position,
             TextAnchor anchor = TextAnchor.UpperLeft)
         {
             var rect = CreateRectTransform(parent, name, new Vector2(0.5f, 0.5f),
                 position, new Vector2(160f, 24f));
-            Text text = rect.gameObject.AddComponent<Text>();
+            TMP_Text text = rect.gameObject.AddComponent<TextMeshProUGUI>();
             text.text = name;
-            text.alignment = anchor;
+            text.alignment = TextAnchorMapper.Map(anchor);
             text.raycastTarget = false;
             text.color = Color.white;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = 12;
+            text.font = TmpFontGenerator.Generate();
+            text.fontSize = 19; // legacy 12 * 1.55 (TMP point sizing)
             return text;
         }
 
@@ -695,7 +704,7 @@ namespace ProjectF.Editor
                 $"{EditorPaths.UiRoot}/WhiteSquare.png");
             image.color = new Color(0.30f, 0.45f, 0.70f);
             Button button = rect.gameObject.AddComponent<Button>();
-            Text label = AddUiText(rect.gameObject, "Label", Vector2.zero, TextAnchor.MiddleCenter);
+            TMP_Text label = AddUiText(rect.gameObject, "Label", Vector2.zero, TextAnchor.MiddleCenter);
             label.rectTransform.sizeDelta = Vector2.zero;
             label.rectTransform.anchorMin = Vector2.zero;
             label.rectTransform.anchorMax = Vector2.one;

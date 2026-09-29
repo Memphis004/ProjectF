@@ -1,17 +1,19 @@
 using UnityEngine;
+using TMPro;
+using TMPro;
 
 // ReSharper disable CheckNamespace
 namespace ProjectF.Presentation.Common
 {
     /// <summary>
-    /// Floating name label above a remote player. TextMesh (no uGUI canvas per
+    /// Floating name label above a remote player. TextMeshPro (no uGUI canvas per
     /// player — cheap and pixel-scaled). Stage 12 adds off-screen clamping and
     /// the shortened address line.
     /// </summary>
     public sealed class NameTagView : MonoBehaviour
     {
         [SerializeField]
-        private TextMesh label = default!;
+        private TextMeshPro label = default!;
 
         [SerializeField]
         private Transform? follow;
@@ -29,7 +31,7 @@ namespace ProjectF.Presentation.Common
             // spam). The overloaded == / != operators handle it correctly.
             if (label == null)
             {
-                label = GetComponent<TextMesh>();
+                label = GetComponent<TextMeshPro>();
             }
 
             if (follow == null)

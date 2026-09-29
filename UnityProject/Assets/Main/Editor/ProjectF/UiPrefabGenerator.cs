@@ -5,6 +5,8 @@ using ProjectF.Infrastructure;
 using ProjectF.Presentation.Common;
 using UnityEditor;
 using UnityEngine;
+using TMPro;
+
 using UnityEngine.UI;
 
 // ReSharper disable CheckNamespace
@@ -28,9 +30,9 @@ namespace ProjectF.Editor
     /// PrefabGenerator: renaming a runtime [SerializeField] breaks this
     /// generator loudly (by design).
     ///
-    /// NOTE: uGUI's default "UI/Default" material handles Thai glyphs through
-    /// LegacyRuntime.ttf fallbacks at runtime; the generator only needs the
-    /// standard Text components.
+    /// NOTE: all text is TextMeshProUGUI with the Sarabun dynamic SDF font
+    /// asset (Thai-capable) — created by TmpFontGenerator, wired as the TMP
+    /// default; the generator only needs the standard TMP components.
     /// </summary>
     public static class UiPrefabGenerator
     {
@@ -280,10 +282,10 @@ namespace ProjectF.Editor
                 overlayImage.color = new Color(0f, 0f, 0f, 0.85f);
                 overlayImage.raycastTarget = true;
 
-                Text title = AddText(overlayGo, "Title", Vector2.zero,
+                TMP_Text title = AddText(overlayGo, "Title", Vector2.zero,
                     new Vector2(300f, 20f), TextAnchor.MiddleCenter, 12);
                 title.text = "Loading";
-                Text progress = AddText(overlayGo, "Progress", new Vector2(0f, -24f),
+                TMP_Text progress = AddText(overlayGo, "Progress", new Vector2(0f, -24f),
                     new Vector2(300f, 16f), TextAnchor.MiddleCenter, 10);
                 progress.text = "syncing block 0";
 
@@ -313,7 +315,7 @@ namespace ProjectF.Editor
                 promptImage.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(
                     EditorPaths.UiRoot + "/WhiteSquare.png");
                 promptImage.color = new Color(0f, 0f, 0f, 0.75f);
-                Text promptText = AddText(promptGo, "Label", Vector2.zero,
+                TMP_Text promptText = AddText(promptGo, "Label", Vector2.zero,
                     new Vector2(116f, 10f), TextAnchor.MiddleCenter, 8);
                 promptText.text = "[E] Talk";
                 promptGo.AddComponent<Infrastructure.Interaction.InteractionPromptView>();
@@ -385,7 +387,7 @@ namespace ProjectF.Editor
                 var icon = iconGo.AddComponent<Image>();
                 icon.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(
                     EditorPaths.UiRoot + "/WhiteSquare.png");
-                Text glyph = AddText(iconGo, "Glyph", Vector2.zero, new Vector2(12f, 12f),
+                TMP_Text glyph = AddText(iconGo, "Glyph", Vector2.zero, new Vector2(12f, 12f),
                     TextAnchor.MiddleCenter, 8);
                 glyph.text = "i";
                 glyph.transform.SetAsLastSibling();
@@ -394,10 +396,10 @@ namespace ProjectF.Editor
                 labelGo.transform.SetParent(row.transform, false);
                 var labelRect = labelGo.AddComponent<RectTransform>();
                 labelRect.sizeDelta = new Vector2(128f, 12f);
-                Text message = labelGo.AddComponent<Text>();
-                message.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                message.fontSize = 9;
-                message.alignment = TextAnchor.MiddleLeft;
+                TMP_Text message = labelGo.AddComponent<TextMeshProUGUI>();
+                message.font = TmpFontGenerator.Generate();
+                message.fontSize = 14; // legacy 9 * 1.55
+                message.alignment = TextAnchorMapper.Map(TextAnchor.MiddleLeft);
                 message.color = Color.white;
                 message.raycastTarget = false;
 
@@ -447,7 +449,7 @@ namespace ProjectF.Editor
                 backdrop.type = Image.Type.Sliced;
                 backdrop.color = new Color(0.13f, 0.11f, 0.09f, 0.96f);
 
-                Text title = AddText(root, "Title", new Vector2(0f, 66f),
+                TMP_Text title = AddText(root, "Title", new Vector2(0f, 66f),
                     new Vector2(240f, 14f), TextAnchor.MiddleCenter, 11);
                 title.text = "Inventory";
                 title.color = new Color(0.95f, 0.9f, 0.8f);
@@ -476,7 +478,7 @@ namespace ProjectF.Editor
                     EditorPaths.UiRoot + "/WhiteSquare.png");
                 tabImage.color = new Color(0.35f, 0.3f, 0.24f);
                 tabTemplate.AddComponent<Button>();
-                Text tabText = AddText(tabTemplate, "Label", Vector2.zero,
+                TMP_Text tabText = AddText(tabTemplate, "Label", Vector2.zero,
                     new Vector2(30f, 13f), TextAnchor.MiddleCenter, 7);
                 tabText.text = "All";
                 tabTemplate.SetActive(false);
@@ -523,10 +525,10 @@ namespace ProjectF.Editor
                 countRect.pivot = new Vector2(1f, 0f);
                 countRect.anchoredPosition = Vector2.zero;
                 countRect.sizeDelta = new Vector2(18f, 8f);
-                Text count = countGo.AddComponent<Text>();
-                count.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                count.fontSize = 7;
-                count.alignment = TextAnchor.LowerRight;
+                TMP_Text count = countGo.AddComponent<TextMeshProUGUI>();
+                count.font = TmpFontGenerator.Generate();
+                count.fontSize = 11; // legacy 7 * 1.55
+                count.alignment = TextAnchorMapper.Map(TextAnchor.LowerRight);
                 count.color = Color.white;
                 count.raycastTarget = false;
                 slotTemplate.SetActive(false);
@@ -545,11 +547,11 @@ namespace ProjectF.Editor
                 tooltipImage.type = Image.Type.Sliced;
                 tooltipImage.color = new Color(0.05f, 0.05f, 0.08f, 0.95f);
 
-                Text tooltipName = AddText(tooltipGo, "Name", new Vector2(-110f, -6f),
+                TMP_Text tooltipName = AddText(tooltipGo, "Name", new Vector2(-110f, -6f),
                     new Vector2(220f, 10f), TextAnchor.UpperLeft, 9);
                 tooltipName.text = "Name";
                 tooltipName.color = new Color(0.95f, 0.85f, 0.5f);
-                Text tooltipBody = AddText(tooltipGo, "Body", new Vector2(-110f, -17f),
+                TMP_Text tooltipBody = AddText(tooltipGo, "Body", new Vector2(-110f, -17f),
                     new Vector2(220f, 10f), TextAnchor.UpperLeft, 8);
                 tooltipBody.text = "description";
 
@@ -566,7 +568,7 @@ namespace ProjectF.Editor
                 eatImage.sprite = registry.WhiteSquareSprite;
                 eatImage.color = new Color(0.30f, 0.55f, 0.30f);
                 eatGo.AddComponent<Button>();
-                Text eatLabel = AddText(eatGo, "Label", Vector2.zero,
+                TMP_Text eatLabel = AddText(eatGo, "Label", Vector2.zero,
                     new Vector2(30f, 12f), TextAnchor.MiddleCenter, 8);
                 eatLabel.text = "Eat";
 
@@ -608,23 +610,23 @@ namespace ProjectF.Editor
                 backdrop.type = Image.Type.Sliced;
                 backdrop.color = new Color(0.15f, 0.12f, 0.10f, 0.98f);
 
-                Text title = AddText(root, "Title", new Vector2(0f, 30f),
+                TMP_Text title = AddText(root, "Title", new Vector2(0f, 30f),
                     new Vector2(160f, 14f), TextAnchor.MiddleCenter, 11);
                 title.text = "Confirm";
                 title.color = new Color(0.95f, 0.85f, 0.5f);
 
-                Text body = AddText(root, "Body", new Vector2(0f, 8f),
+                TMP_Text body = AddText(root, "Body", new Vector2(0f, 8f),
                     new Vector2(164f, 28f), TextAnchor.MiddleCenter, 9);
                 body.text = "Are you sure?";
 
                 Button confirm = AddButton(root, "ConfirmButton", new Vector2(-45f, -28f),
                     registry, new Color(0.30f, 0.55f, 0.30f));
-                Text confirmLabel = confirm.GetComponentInChildren<Text>();
+                TMP_Text confirmLabel = confirm.GetComponentInChildren<TMP_Text>();
                 confirmLabel.text = "OK";
 
                 Button cancel = AddButton(root, "CancelButton", new Vector2(45f, -28f),
                     registry, new Color(0.55f, 0.30f, 0.28f));
-                Text cancelLabel = cancel.GetComponentInChildren<Text>();
+                TMP_Text cancelLabel = cancel.GetComponentInChildren<TMP_Text>();
                 cancelLabel.text = "Cancel";
 
                 var view = root.AddComponent<Presentation.Common.ConfirmDialog>();
@@ -663,7 +665,7 @@ namespace ProjectF.Editor
                 backdrop.type = Image.Type.Sliced;
                 backdrop.color = new Color(0.13f, 0.11f, 0.09f, 0.96f);
 
-                Text title = AddText(root, "Title", new Vector2(0f, 66f),
+                TMP_Text title = AddText(root, "Title", new Vector2(0f, 66f),
                     new Vector2(240f, 14f), TextAnchor.MiddleCenter, 11);
                 title.text = "Shop";
                 title.color = new Color(0.95f, 0.9f, 0.8f);
@@ -674,19 +676,19 @@ namespace ProjectF.Editor
                 // Footer: stepper + total + action button.
                 Button minus = AddButton(root, "MinusButton", new Vector2(-100f, -58f),
                     registry, new Color(0.35f, 0.3f, 0.24f));
-                minus.GetComponentInChildren<Text>().text = "-";
-                Text qty = AddText(root, "Quantity", new Vector2(-70f, -58f),
+                minus.GetComponentInChildren<TMP_Text>().text = "-";
+                TMP_Text qty = AddText(root, "Quantity", new Vector2(-70f, -58f),
                     new Vector2(30f, 14f), TextAnchor.MiddleCenter, 10);
                 qty.text = "x1";
                 Button plus = AddButton(root, "PlusButton", new Vector2(-40f, -58f),
                     registry, new Color(0.35f, 0.3f, 0.24f));
-                plus.GetComponentInChildren<Text>().text = "+";
-                Text total = AddText(root, "Total", new Vector2(40f, -58f),
+                plus.GetComponentInChildren<TMP_Text>().text = "+";
+                TMP_Text total = AddText(root, "Total", new Vector2(40f, -58f),
                     new Vector2(90f, 14f), TextAnchor.MiddleLeft, 9);
                 total.text = "Total: 0";
                 Button action = AddButton(root, "ActionButton", new Vector2(100f, -58f),
                     registry, new Color(0.30f, 0.55f, 0.30f));
-                action.GetComponentInChildren<Text>().text = "Buy";
+                action.GetComponentInChildren<TMP_Text>().text = "Buy";
 
                 var view = root.AddComponent<Presentation.Shop.ShopWindow>();
                 var so = new SerializedObject(view);
@@ -700,7 +702,7 @@ namespace ProjectF.Editor
                 so.FindProperty("plusButton")!.objectReferenceValue = plus;
                 so.FindProperty("actionButton")!.objectReferenceValue = action;
                 so.FindProperty("actionLabel")!.objectReferenceValue =
-                    action.GetComponentInChildren<Text>();
+                    action.GetComponentInChildren<TMP_Text>();
                 so.ApplyModifiedPropertiesWithoutUndo();
 
                 SavePrefab(root, "ShopWindow");
@@ -724,14 +726,14 @@ namespace ProjectF.Editor
                 backdrop.type = Image.Type.Sliced;
                 backdrop.color = new Color(0.13f, 0.11f, 0.09f, 0.96f);
 
-                Text title = AddText(root, "Title", new Vector2(0f, 66f),
+                TMP_Text title = AddText(root, "Title", new Vector2(0f, 66f),
                     new Vector2(240f, 14f), TextAnchor.MiddleCenter, 11);
                 title.text = "Task Board";
                 title.color = new Color(0.95f, 0.9f, 0.8f);
 
                 AddRowList(root, registry, RowKind.Task, out RectTransform rowTemplate, out RectTransform rowList);
 
-                Text countdown = AddText(root, "Countdown", new Vector2(0f, -58f),
+                TMP_Text countdown = AddText(root, "Countdown", new Vector2(0f, -58f),
                     new Vector2(240f, 14f), TextAnchor.MiddleCenter, 9);
                 countdown.text = "reroll in 600 blocks (~20 min)";
 
@@ -763,29 +765,29 @@ namespace ProjectF.Editor
                 backdrop.type = Image.Type.Sliced;
                 backdrop.color = new Color(0.13f, 0.11f, 0.09f, 0.96f);
 
-                Text title = AddText(root, "Title", new Vector2(0f, 66f),
+                TMP_Text title = AddText(root, "Title", new Vector2(0f, 66f),
                     new Vector2(240f, 14f), TextAnchor.MiddleCenter, 11);
                 title.text = "Kitchen";
                 title.color = new Color(0.95f, 0.9f, 0.8f);
 
                 AddRowList(root, registry, RowKind.Craft, out RectTransform rowTemplate, out RectTransform rowList);
 
-                Text detail = AddText(root, "Detail", new Vector2(-40f, -58f),
+                TMP_Text detail = AddText(root, "Detail", new Vector2(-40f, -58f),
                     new Vector2(150f, 14f), TextAnchor.MiddleLeft, 8);
                 detail.text = "stamina 0 · great 5%";
 
                 Button minus = AddButton(root, "MinusButton", new Vector2(-100f, -58f),
                     registry, new Color(0.35f, 0.3f, 0.24f));
-                minus.GetComponentInChildren<Text>().text = "-";
-                Text qty = AddText(root, "Portions", new Vector2(-70f, -58f),
+                minus.GetComponentInChildren<TMP_Text>().text = "-";
+                TMP_Text qty = AddText(root, "Portions", new Vector2(-70f, -58f),
                     new Vector2(30f, 14f), TextAnchor.MiddleCenter, 10);
                 qty.text = "x1";
                 Button plus = AddButton(root, "PlusButton", new Vector2(-40f, -58f),
                     registry, new Color(0.35f, 0.3f, 0.24f));
-                plus.GetComponentInChildren<Text>().text = "+";
+                plus.GetComponentInChildren<TMP_Text>().text = "+";
                 Button craft = AddButton(root, "CraftButton", new Vector2(100f, -58f),
                     registry, new Color(0.30f, 0.55f, 0.30f));
-                craft.GetComponentInChildren<Text>().text = "Cook";
+                craft.GetComponentInChildren<TMP_Text>().text = "Cook";
 
                 // Locked overlay: covers everything, shows "Talk to Auntie first".
                 GameObject locked = new("LockedOverlay");
@@ -798,7 +800,7 @@ namespace ProjectF.Editor
                 var lockedImage = locked.AddComponent<Image>();
                 lockedImage.sprite = registry.WhiteSquareSprite;
                 lockedImage.color = new Color(0f, 0f, 0f, 0.72f);
-                Text lockedText = AddText(locked, "Text", Vector2.zero,
+                TMP_Text lockedText = AddText(locked, "Text", Vector2.zero,
                     new Vector2(240f, 30f), TextAnchor.MiddleCenter, 10);
                 lockedText.text = "Locked";
 
@@ -808,7 +810,7 @@ namespace ProjectF.Editor
                 // confirm.
                 Button unlock = AddButton(locked, "UnlockButton", new Vector2(0f, -28f),
                     registry, new Color(0.55f, 0.45f, 0.20f));
-                unlock.GetComponentInChildren<Text>().text = "Unlock kitchen";
+                unlock.GetComponentInChildren<TMP_Text>().text = "Unlock kitchen";
                 locked.SetActive(false);
 
                 var view = root.AddComponent<Presentation.AuntieHouse.CraftWindow>();
@@ -821,7 +823,7 @@ namespace ProjectF.Editor
                 so.FindProperty("plusButton")!.objectReferenceValue = plus;
                 so.FindProperty("craftButton")!.objectReferenceValue = craft;
                 so.FindProperty("craftLabel")!.objectReferenceValue =
-                    craft.GetComponentInChildren<Text>();
+                    craft.GetComponentInChildren<TMP_Text>();
                 so.FindProperty("lockedOverlay")!.objectReferenceValue = locked;
                 so.FindProperty("unlockButton")!.objectReferenceValue = unlock;
                 so.ApplyModifiedPropertiesWithoutUndo();
@@ -904,44 +906,44 @@ namespace ProjectF.Editor
                 iconRect.sizeDelta = new Vector2(14f, 14f);
                 iconGo.AddComponent<Image>();
 
-                Text name = AddText(template, "Name", new Vector2(10f, 0f),
+                TMP_Text name = AddText(template, "Name", new Vector2(10f, 0f),
                     new Vector2(104f, 16f), TextAnchor.MiddleLeft, 8);
                 name.text = "Item";
-                Text stock = AddText(template, "Stock", new Vector2(118f, 0f),
+                TMP_Text stock = AddText(template, "Stock", new Vector2(118f, 0f),
                     new Vector2(28f, 16f), TextAnchor.MiddleLeft, 8);
                 stock.text = "∞";
-                Text price = AddText(template, "Price", new Vector2(150f, 0f),
+                TMP_Text price = AddText(template, "Price", new Vector2(150f, 0f),
                     new Vector2(30f, 16f), TextAnchor.MiddleRight, 8);
                 price.text = "0";
-                Text lockLabel = AddText(template, "Lock", new Vector2(184f, 0f),
+                TMP_Text lockLabel = AddText(template, "Lock", new Vector2(184f, 0f),
                     new Vector2(50f, 16f), TextAnchor.MiddleRight, 8);
                 lockLabel.text = "L3";
                 lockLabel.color = new Color(0.95f, 0.7f, 0.25f);
             }
             else if (kind == RowKind.Task)
             {
-                Text taskTitle = AddText(template, "Title", new Vector2(4f, 2f),
+                TMP_Text taskTitle = AddText(template, "Title", new Vector2(4f, 2f),
                     new Vector2(150f, 12f), TextAnchor.MiddleLeft, 8);
                 taskTitle.text = "Task";
-                Text progress = AddText(template, "Progress", new Vector2(160f, 2f),
+                TMP_Text progress = AddText(template, "Progress", new Vector2(160f, 2f),
                     new Vector2(40f, 12f), TextAnchor.MiddleRight, 8);
                 progress.text = "0/3";
-                Text reward = AddText(template, "Reward", new Vector2(4f, -6f),
+                TMP_Text reward = AddText(template, "Reward", new Vector2(4f, -6f),
                     new Vector2(190f, 10f), TextAnchor.MiddleLeft, 7);
                 reward.text = "reward";
                 reward.color = new Color(0.7f, 0.9f, 0.55f);
                 Button submit = AddButton(template, "Submit", new Vector2(196f, 0f),
                     registry, new Color(0.30f, 0.55f, 0.30f));
                 submit.GetComponent<RectTransform>().sizeDelta = new Vector2(36f, 12f);
-                submit.GetComponentInChildren<Text>().fontSize = 7;
-                submit.GetComponentInChildren<Text>().text = "Send";
+                submit.GetComponentInChildren<TMP_Text>().fontSize = 11; // legacy 7 * 1.55
+                submit.GetComponentInChildren<TMP_Text>().text = "Send";
             }
             else
             {
-                Text craftTitle = AddText(template, "Title", new Vector2(4f, 2f),
+                TMP_Text craftTitle = AddText(template, "Title", new Vector2(4f, 2f),
                     new Vector2(200f, 12f), TextAnchor.MiddleLeft, 8);
                 craftTitle.text = "Recipe";
-                Text materials = AddText(template, "Materials", new Vector2(4f, -6f),
+                TMP_Text materials = AddText(template, "Materials", new Vector2(4f, -6f),
                     new Vector2(220f, 10f), TextAnchor.MiddleLeft, 7);
                 materials.text = "materials";
                 materials.color = new Color(0.75f, 0.75f, 0.75f);
@@ -957,7 +959,7 @@ namespace ProjectF.Editor
         // its own — these carry size/anchor params the windows need)
         // ------------------------------------------------------------------
 
-        private static Text AddText(
+        private static TMP_Text AddText(
             GameObject parent, string name, Vector2 position, Vector2 size,
             TextAnchor anchor, int fontSize)
         {
@@ -968,10 +970,11 @@ namespace ProjectF.Editor
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = position;
             rect.sizeDelta = size;
-            Text text = go.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = fontSize;
-            text.alignment = anchor;
+            TMP_Text text = go.AddComponent<TextMeshProUGUI>();
+            text.font = TmpFontGenerator.Generate();
+            // TMP point sizes ≈ 1.55x legacy font sizes at the same rect.
+            text.fontSize = Mathf.RoundToInt(fontSize * 1.55f);
+            text.alignment = TextAnchorMapper.Map(anchor);
             text.color = Color.white;
             text.raycastTarget = false;
             return text;
@@ -992,7 +995,7 @@ namespace ProjectF.Editor
             image.sprite = registry.WhiteSquareSprite;
             image.color = color;
             Button button = go.AddComponent<Button>();
-            Text label = AddText(go, "Label", Vector2.zero, new Vector2(56f, 14f),
+            TMP_Text label = AddText(go, "Label", Vector2.zero, new Vector2(56f, 14f),
                 TextAnchor.MiddleCenter, 9);
             return button;
         }

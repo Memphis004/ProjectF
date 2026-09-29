@@ -28,6 +28,9 @@ namespace ProjectF.Editor
         {
             RunGuarded("full-setup", () =>
             {
+                // Thai TMP font FIRST — every later generator assigns it to
+                // the text components it creates.
+                TmpFontGenerator.Generate();
                 PlaceholderSpriteGenerator.GenerateAll();
                 SettingsAssetGenerator.Generate(forceRegenerate: false);
                 PrefabGenerator.GenerateAll();

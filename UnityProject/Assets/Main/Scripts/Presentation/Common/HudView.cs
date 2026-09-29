@@ -6,6 +6,9 @@ using ProjectF.Infrastructure.Blockchain;
 using ProjectF.Infrastructure.Network;
 using ProjectF.Infrastructure.UI;
 using UnityEngine;
+using TMPro;
+using TMPro;
+
 using UnityEngine.UI;
 
 // ReSharper disable CheckNamespace
@@ -21,19 +24,19 @@ namespace ProjectF.Presentation.Common
     public sealed class HudView : MonoBehaviour
     {
         [SerializeField]
-        private Text nameLabel = default!;
+        private TMP_Text nameLabel = default!;
 
         [SerializeField]
-        private Text staminaLabel = default!;
+        private TMP_Text staminaLabel = default!;
 
         [SerializeField]
         private Image staminaBar = default!;
 
         [SerializeField]
-        private Text goldLabel = default!;
+        private TMP_Text goldLabel = default!;
 
         [SerializeField]
-        private Text levelLabel = default!;
+        private TMP_Text levelLabel = default!;
 
         [SerializeField]
         private Image fishingExpBar = default!;
@@ -42,10 +45,10 @@ namespace ProjectF.Presentation.Common
         private Image cookingExpBar = default!;
 
         [SerializeField]
-        private Text sceneLabel = default!;
+        private TMP_Text sceneLabel = default!;
 
         [SerializeField]
-        private Text tipLabel = default!;
+        private TMP_Text tipLabel = default!;
 
         [SerializeField]
         private Image chainStatusDot = default!;
@@ -57,27 +60,27 @@ namespace ProjectF.Presentation.Common
         /// "Syncing N / M" ONLY while actually catching up; hidden otherwise
         /// so it can never crowd the HUD at rest.</summary>
         [SerializeField]
-        private Text syncLabel = default!;
+        private TMP_Text syncLabel = default!;
 
         /// <summary>Stage 11: pending-action badge ("…n" while actions are
         /// staged, a spinning dot while queued). Zero logic — presenter-driven.</summary>
         [SerializeField]
-        private Text pendingLabel = default!;
+        private TMP_Text pendingLabel = default!;
 
-        public Text NameLabel => nameLabel;
-        public Text StaminaLabel => staminaLabel;
+        public TMP_Text NameLabel => nameLabel;
+        public TMP_Text StaminaLabel => staminaLabel;
         public Image StaminaBar => staminaBar;
-        public Text GoldLabel => goldLabel;
-        public Text LevelLabel => levelLabel;
+        public TMP_Text GoldLabel => goldLabel;
+        public TMP_Text LevelLabel => levelLabel;
         public Image FishingExpBar => fishingExpBar;
         public Image CookingExpBar => cookingExpBar;
-        public Text SceneLabel => sceneLabel;
-        public Text TipLabel => tipLabel;
+        public TMP_Text SceneLabel => sceneLabel;
+        public TMP_Text TipLabel => tipLabel;
         public Image ChainStatusDot => chainStatusDot;
         public Image PresenceStatusDot => presenceStatusDot;
-        public Text SyncLabel => syncLabel;
+        public TMP_Text SyncLabel => syncLabel;
 
-        public Text PendingLabel => pendingLabel;
+        public TMP_Text PendingLabel => pendingLabel;
     }
 
     /// <summary>HUD PRESENTER — binds <see cref="StateWatcher"/> and presence
@@ -189,7 +192,7 @@ namespace ProjectF.Presentation.Common
         {
             SetChainStatus(chain.Status);
 
-            Text? label = view.SyncLabel;
+            TMP_Text? label = view.SyncLabel;
             if (label is null)
             {
                 return;

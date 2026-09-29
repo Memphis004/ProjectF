@@ -9,6 +9,9 @@ using ProjectF.Infrastructure.UI;
 using ProjectF.Lib.Actions;
 using ProjectF.Presentation.Common;
 using UnityEngine;
+using TMPro;
+using TMPro;
+
 using UnityEngine.UI;
 using GeneratedTables = ProjectF.Tables.Tables;
 using ItemCategory = ProjectF.Tables.ItemCategory;
@@ -34,10 +37,10 @@ namespace ProjectF.Presentation.Shop
         private RectTransform rowList = default!;
 
         [SerializeField]
-        private Text totalLabel = default!;
+        private TMP_Text totalLabel = default!;
 
         [SerializeField]
-        private Text quantityLabel = default!;
+        private TMP_Text quantityLabel = default!;
 
         [SerializeField]
         private Button minusButton = default!;
@@ -49,18 +52,18 @@ namespace ProjectF.Presentation.Shop
         private Button actionButton = default!;
 
         [SerializeField]
-        private Text actionLabel = default!;
+        private TMP_Text actionLabel = default!;
 
         public RectTransform BuyTabButton => buyTabButton;
         public RectTransform SellTabButton => sellTabButton;
         public RectTransform RowTemplate => rowTemplate;
         public RectTransform RowList => rowList;
-        public Text TotalLabel => totalLabel;
-        public Text QuantityLabel => quantityLabel;
+        public TMP_Text TotalLabel => totalLabel;
+        public TMP_Text QuantityLabel => quantityLabel;
         public Button MinusButton => minusButton;
         public Button PlusButton => plusButton;
         public Button ActionButton => actionButton;
-        public Text ActionLabel => actionLabel;
+        public TMP_Text ActionLabel => actionLabel;
 
         public override bool IsModal => false;
 
@@ -457,14 +460,14 @@ namespace ProjectF.Presentation.Shop
             RectTransform row, ProjectF.Tables.Item item, string price,
             bool levelOk, int requiredLevel)
         {
-            Text name = row.Find("Name")!.GetComponent<Text>();
+            TMP_Text name = row.Find("Name")!.GetComponent<TMP_Text>();
             name.text = loc.Get(item.NameKey);
             name.color = levelOk ? Color.white : new Color(0.55f, 0.55f, 0.55f);
 
-            Text priceLabel = row.Find("Price")!.GetComponent<Text>();
+            TMP_Text priceLabel = row.Find("Price")!.GetComponent<TMP_Text>();
             priceLabel.text = price;
 
-            Text lockLabel = row.Find("Lock")!.GetComponent<Text>();
+            TMP_Text lockLabel = row.Find("Lock")!.GetComponent<TMP_Text>();
             lockLabel.gameObject.SetActive(!levelOk);
             if (!levelOk)
             {
@@ -478,7 +481,7 @@ namespace ProjectF.Presentation.Shop
 
         private void SetRowStock(RectTransform row, string stock)
         {
-            row.Find("Stock")!.GetComponent<Text>().text = stock;
+            row.Find("Stock")!.GetComponent<TMP_Text>().text = stock;
         }
 
         private void ClearRows()

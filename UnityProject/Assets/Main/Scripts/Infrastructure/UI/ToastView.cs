@@ -1,4 +1,7 @@
 using UnityEngine;
+using TMPro;
+using TMPro;
+
 using UnityEngine.UI;
 
 // ReSharper disable CheckNamespace
@@ -16,7 +19,7 @@ namespace ProjectF.Infrastructure.UI
     public sealed class ToastView : MonoBehaviour
     {
         [SerializeField]
-        private Text messageLabel = default!;
+        private TMP_Text messageLabel = default!;
 
         [SerializeField]
         private Image icon = default!;
@@ -24,7 +27,7 @@ namespace ProjectF.Infrastructure.UI
         [SerializeField]
         private Image spinner = default!;
 
-        public Text MessageLabel => messageLabel;
+        public TMP_Text MessageLabel => messageLabel;
         public Image Icon => icon;
         public Image Spinner => spinner;
 

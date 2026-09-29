@@ -7,6 +7,9 @@ using ProjectF.Infrastructure.Blockchain;
 using ProjectF.Infrastructure.DataTables;
 using ProjectF.Infrastructure.UI;
 using UnityEngine;
+using TMPro;
+using TMPro;
+
 using UnityEngine.UI;
 using GeneratedTables = ProjectF.Tables.Tables;
 using ItemCategory = ProjectF.Tables.ItemCategory;
@@ -35,18 +38,18 @@ namespace ProjectF.Presentation.Common
         private GameObject tooltipPanel = default!;
 
         [SerializeField]
-        private Text tooltipName = default!;
+        private TMP_Text tooltipName = default!;
 
         [SerializeField]
-        private Text tooltipBody = default!;
+        private TMP_Text tooltipBody = default!;
 
         public RectTransform TabRow => tabRow;
         public RectTransform TabTemplate => tabTemplate;
         public RectTransform Grid => grid;
         public RectTransform SlotTemplate => slotTemplate;
         public GameObject TooltipPanel => tooltipPanel;
-        public Text TooltipName => tooltipName;
-        public Text TooltipBody => tooltipBody;
+        public TMP_Text TooltipName => tooltipName;
+        public TMP_Text TooltipBody => tooltipBody;
 
         public override bool IsModal => false;
 
@@ -203,7 +206,7 @@ namespace ProjectF.Presentation.Common
             Image icon = slot.Find("Icon")!.GetComponent<Image>();
             icon.sprite = sprites.GetItemIcon(item.Id);
 
-            Text countLabel = slot.Find("Count")!.GetComponent<Text>();
+            TMP_Text countLabel = slot.Find("Count")!.GetComponent<TMP_Text>();
             countLabel.text = FormatCount(count);
 
             Button button = slot.GetComponent<Button>();
@@ -338,7 +341,7 @@ namespace ProjectF.Presentation.Common
         {
             RectTransform tab = UnityEngine.Object.Instantiate(view!.TabTemplate, view.TabRow);
             tab.gameObject.SetActive(true);
-            Text label = tab.GetComponentInChildren<Text>();
+            TMP_Text label = tab.GetComponentInChildren<TMP_Text>();
             if (label is { })
             {
                 label.text = loc.Get(locKey);

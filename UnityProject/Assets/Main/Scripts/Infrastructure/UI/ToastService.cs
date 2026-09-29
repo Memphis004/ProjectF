@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
+using TMPro;
+using TMPro;
+
 using UnityEngine.UI;
 
 // ReSharper disable CheckNamespace
@@ -131,7 +134,7 @@ namespace ProjectF.Infrastructure.UI
             view.Icon.color = color;
             // Text glyph placeholder for the Stage 13 icon pass — the icon is
             // a small Image with a letter, cheap and readable at 320x180.
-            Text? glyphLabel = view.Icon.GetComponent<Text>();
+            TMP_Text? glyphLabel = view.Icon.GetComponent<TMP_Text>();
             if (glyphLabel is { })
             {
                 glyphLabel.text = glyph;

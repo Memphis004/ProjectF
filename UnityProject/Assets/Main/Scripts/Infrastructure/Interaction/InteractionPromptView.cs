@@ -1,5 +1,7 @@
 using UnityEngine;
-using UnityEngine.UI;
+using TMPro;
+using TMPro;
+
 
 // ReSharper disable CheckNamespace
 namespace ProjectF.Infrastructure.Interaction
@@ -19,10 +21,10 @@ namespace ProjectF.Infrastructure.Interaction
         private RectTransform root = default!;
 
         [SerializeField]
-        private Text label = default!;
+        private TMP_Text label = default!;
 
         public RectTransform Root => root;
-        public Text Label => label;
+        public TMP_Text Label => label;
 
         public void Show(IInteractable target, string ePrefix, string verb)
         {

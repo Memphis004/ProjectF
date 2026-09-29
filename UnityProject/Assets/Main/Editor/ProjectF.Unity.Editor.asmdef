@@ -4,7 +4,8 @@
     "references": [
         "ProjectF.Unity",
         "VContainer",
-        "Unity.2D.PixelPerfect"
+        "Unity.2D.PixelPerfect",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [
         "Editor"

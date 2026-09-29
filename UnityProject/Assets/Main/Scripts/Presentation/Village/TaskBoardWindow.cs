@@ -9,6 +9,9 @@ using ProjectF.Infrastructure.UI;
 using ProjectF.Lib.Actions;
 using ProjectF.Presentation.Common;
 using UnityEngine;
+using TMPro;
+using TMPro;
+
 using UnityEngine.UI;
 using GeneratedTables = ProjectF.Tables.Tables;
 using TaskRow = ProjectF.Tables.Task;
@@ -26,11 +29,11 @@ namespace ProjectF.Presentation.Village
         private RectTransform rowList = default!;
 
         [SerializeField]
-        private Text countdownLabel = default!;
+        private TMP_Text countdownLabel = default!;
 
         public RectTransform RowTemplate => rowTemplate;
         public RectTransform RowList => rowList;
-        public Text CountdownLabel => countdownLabel;
+        public TMP_Text CountdownLabel => countdownLabel;
 
         public override bool IsModal => false;
 
@@ -184,9 +187,9 @@ namespace ProjectF.Presentation.Village
                 RectTransform row = UnityEngine.Object.Instantiate(view.RowTemplate, view.RowList);
                 row.gameObject.SetActive(true);
 
-                row.Find("Title")!.GetComponent<Text>().text =
+                row.Find("Title")!.GetComponent<TMP_Text>().text =
                     $"{loc.Get("TASK_DELIVER")} {task.TargetCount}x {loc.Get(ItemName(table, task.TargetItemId))}";
-                row.Find("Progress")!.GetComponent<Text>().text =
+                row.Find("Progress")!.GetComponent<TMP_Text>().text =
                     completed ? loc.Get("TASK_DONE") : $"{have}/{need}";
 
                 string reward = loc.Get("TASK_REWARD")
@@ -197,10 +200,10 @@ namespace ProjectF.Presentation.Village
                     reward += $" + {task.RewardItemCount}x {loc.Get(ItemName(table, task.RewardItemId))}";
                 }
 
-                row.Find("Reward")!.GetComponent<Text>().text = reward;
+                row.Find("Reward")!.GetComponent<TMP_Text>().text = reward;
 
                 Button submit = row.Find("Submit")!.GetComponent<Button>();
-                Text submitLabel = submit.GetComponentInChildren<Text>();
+                TMP_Text submitLabel = submit.GetComponentInChildren<TMP_Text>();
                 submitLabel.text = loc.Get("TASK_SUBMIT");
                 submit.interactable = !completed && !isSubmitting
                     && TaskBoardLogic.CanSubmit(snap.Inventory, task.TargetItemId, task.TargetCount);

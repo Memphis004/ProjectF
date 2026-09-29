@@ -2,6 +2,9 @@ using System.Threading;
 using Cysharp.Threading.Tasks;
 using ProjectF.Infrastructure.UI;
 using UnityEngine;
+using TMPro;
+using TMPro;
+
 using UnityEngine.UI;
 
 // ReSharper disable CheckNamespace
@@ -29,10 +32,10 @@ namespace ProjectF.Presentation.Common
     public sealed class ConfirmDialog : UIWindow<ConfirmDialogParam, bool>
     {
         [SerializeField]
-        private Text titleLabel = default!;
+        private TMP_Text titleLabel = default!;
 
         [SerializeField]
-        private Text bodyLabel = default!;
+        private TMP_Text bodyLabel = default!;
 
         [SerializeField]
         private Button confirmButton = default!;
@@ -41,10 +44,10 @@ namespace ProjectF.Presentation.Common
         private Button cancelButton = default!;
 
         [SerializeField]
-        private Text confirmLabel = default!;
+        private TMP_Text confirmLabel = default!;
 
         [SerializeField]
-        private Text cancelLabel = default!;
+        private TMP_Text cancelLabel = default!;
 
         /// <summary>Escape = cancel (UIWindow semantics via RequestClose with
         /// the already-default result).</summary>

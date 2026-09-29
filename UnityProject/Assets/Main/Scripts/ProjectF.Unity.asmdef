@@ -6,7 +6,8 @@
         "UniTask",
         "MagicOnion.Unity",
         "Cysharp.Net.Http.YetAnotherHttpHandler",
-        "UnityEngine.UI"
+        "UnityEngine.UI",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
