@@ -180,7 +180,54 @@ namespace ProjectF.Editor
                 }
             }
 
+            // Pre-warm printable ASCII too: a fresh Dynamic asset starts with
+            // only the sampled Thai glyphs, so labels like "[E] Talk" would
+            // rasterize late (or show blanks) on first display.
+            if (!HasAllAscii(fontAsset))
+            {
+                try
+                {
+                    fontAsset.TryAddCharacters(PrintableAscii);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("[tmp-font] ASCII TryAddCharacters threw: " + e.Message);
+                }
+
+                if (AssetDatabase.Contains(fontAsset))
+                {
+                    AssetDatabase.SaveAssets();
+                }
+            }
+
             return HasAllSampleCharacters(fontAsset);
+        }
+
+        private static bool HasAllAscii(TMP_FontAsset fontAsset)
+        {
+            for (int i = 32; i <= 126; i++)
+            {
+                if (!fontAsset.HasCharacter((char)i, false))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static string PrintableAscii
+        {
+            get
+            {
+                var sb = new System.Text.StringBuilder(95);
+                for (int i = 32; i <= 126; i++)
+                {
+                    sb.Append((char)i);
+                }
+
+                return sb.ToString();
+            }
         }
 
         private static bool HasAllSampleCharacters(TMP_FontAsset fontAsset)

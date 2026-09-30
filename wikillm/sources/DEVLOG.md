@@ -476,3 +476,65 @@ idle steady-state กลับมา **173 = baseline เป๊ะ** — ⚠️ 
   ที่ GC pause/เน็ตสะดุด >1s โดน ping fail ตัดทิ้ง แล้วต้องรอ re-discovery ผ่าน
   StaticPeers) (commit `fb05a29`)
 
+# 10. Stage 16 ต่อ — UI ทั้งหมดย้ายไป TextMeshPro + ฟอนต์ไทย Sarabun (2026-09-30)
+
+ย้าย UI text ทุกตัวจาก legacy `UnityEngine.UI.Text` ไป TMP (TextMeshProUGUI +
+TextMeshPro 3D สำหรับ name tag) พร้อมฟอนต์ไทย OFL (Sarabun) เป็น dynamic SDF
+font asset — generator เป็น source of truth ตาม knowledge.md ห้ามแก้ prefab มือ
+(commit `52ca130`)
+
+## 10.1 กับดักใหญ่ของวัน — `TryAddCharacters` คืน false สองความหมาย
+
+อาการหลอก: หลัง domain reload, `TryAddCharacters("แรง ทอง ตกปลา")` บน asset ที่
+โหลดจากดิสก์คืน **false** ทั้งที่ asset ปกติ — เข้าใจผิดว่า "asset เสีย" ไปเขียน
+fallback ลบ+สร้างใหม่ กลายเป็น loop: ลบทุกครั้งที่ Generate() ถูกเรียก (55
+ครั้ง/รอบ setup) → **GUID เปลี่ยนตลอด** → prefab ก่อนหน้าอ้าง font ตาย
+
+**สาเหตุจริง (TMP 3.0.9):** `TryAddCharacters` คืน false ทั้งเมื่อ rasterize
+ไม่สำเร็จ และเมื่อ **"ไม่มีอะไรต้องเพิ่ม"** (glyph ครบอยู่แล้ว) — ค่า return
+จึงแยก healthy/broken ไม่ได้
+
+**แก้:** probe ความครอบคลุมจริงด้วย `HasCharacter(ch, false)` ทีละตัว (เรียก
+`ReadFontAssetDefinition()` ก่อน — lookup dictionary เป็น runtime-only สร้าง
+ตอน probe แรก) แล้ว TryAdd **เฉพาะเมื่อขาดจริง** + reuse asset เดิมเสมอ รอบสุด
+ท้าย Generate() 55 ครั้ง = reuse หมด 0 recreate
+
+**บทเรียนเชิงระบบ:** probe หลังแก้ต้องอ่าน **สถานะบนดิสก์** (SerializedObject
+m_CharacterTable/m_GlyphTable) คู่กับ HasCharacter — แค่เชื่อ return ของ API
+ตัวเดียวโดยไม่รู้ semantics ทำให้แก้ผิดทิศทางทั้งชุด
+
+## 10.2 รายละเอียดการ generate font asset ให้รอด (TMP 3.0.9)
+
+- `CreateFontAsset(Font, 46, 9, SDFAA, 512, 512, Dynamic)` — **ต้อง**
+  `AddObjectToAsset(atlasTexture)` + `AddObjectToAsset(material)` เป็น
+  sub-asset ก่อน SaveAssets ไม่งั้นรีโหลดแล้ว `m_AtlasTextures` หาย (เคยเจอ)
+- **Atlas เริ่มต้นมีแค่ glyph ที่ sample มา** — text ที่เป็น ASCII ("[E] Talk",
+  "All", "PendingLabel") จึงโดน rasterize ทีหลัง/ว้าง ต้อง pre-warm printable
+  ASCII (32-126) ลง asset ด้วย (แก้ใน TmpFontGenerator แล้ว)
+- `TextAlignmentOptions` เป็น flags — **cast int จาก TextAnchor เพี้ยนเงียบ ๆ**
+  ต้องผ่าน TextAnchorMapper (switch ตรง)
+- ตรวจจากข้อมูลจริงใน play mode: ทุก TMP_Text ในซีน font=`Sarabun SDF`,
+  `totalMiss=0` (25 texts, inactive รวม), textInfo.characterCount ครบ — ข้อความ
+  ไทย "แรง/ทอง/ผัก/เบ็ด/เมล็ด/วัสดุ/เหยื่อ/ทั้งหมด/ปลา/อาหาร" layout จริงทุกตัว
+- Screenshot จริง (เกมมุม player): name tag 3D "P2" เรนเดอร์ชัดผ่าน Sarabun
+
+## 10.3 เห็บจากการเทส 2-instance รอบยืนยันซ้ำ (peers 2 ทั้งสองชั้น)
+
+- **แก้ไฟล์ .cs ระหว่าง Play Mode = Editor instance ตายเงียบ ๆ** — recompile
+  ตอน Editor ได้ focus ทำ domain reload กลางเกม: `RootLifetimeScope.Container`
+  กลายเป็น null, hub connection หาย, tip ค้าง — สังเกตยากเพราะ IsPlaying ยัง
+  true กฎ: ห้าม save โค้ดระหว่าง play (สอดคล้อง 9.5 ที่เคยจด)
+- จับ peer count ผ่าน `netstat` หา seed ไม่ได้ (NetMQ ใช้ ephemeral port +
+  connection state ไม่ ESTABLISHED แบบ TCP ปกติ) — จุดสังเกตที่เชื่อถือได้คือ
+  `[status] Peers: N` ของ seed log และ **ESTABLISHED ตรง hub :5170** (MagicOnion
+  ใช้ TCP จริง) — hub conns = 2 เมื่อทั้งคู่ join
+- probe สถานะ runtime ต้องรู้ว่าตัวไหน MonoBehaviour: `PresenceConnection` /
+  `AppBootstrapper` / `HudPresenter` เป็น **plain C#** (VContainer) — หาไม่เจอ
+  ด้วย FindFirstObjectByType ต้อง resolve ผ่าน `LifetimeScope.Container` (และ
+  Village scope ต้อง `.Parent.Container` — ตัวเองไม่ build container)
+- sync chain ตอน join ทีหลังช้า ~400 blocks (preload pass timeout + resume) —
+  presence join ได้ก่อน sync เสร็จ จึงเห็น roster ทันทีแม้ tip ยังต่ำกว่า seed
+- พยานรอบสุดท้าย: seed `Peers: 2`; Editor log `[presence] remote joined: P2
+  (3dac4e64…)` + spawn `RemotePlayer_P2`; P2 log `[presence] remote joined:
+  Player (654fb4d1…)` (session ต่างจากตัวเอง = ไม่ self-echo)
+
