@@ -31,6 +31,11 @@ namespace ProjectF.Tests
 
             public string TipPreviousHash { get; set; } = string.Empty;
 
+            /// <summary>Simulated chain: index → hash. Tests append entries
+            /// so <see cref="GetBlockHashAt"/> can answer ancestor queries
+            /// exactly like the real LibplanetClient.</summary>
+            public Dictionary<long, string> Blocks { get; } = new();
+
             public ChainStatus Status { get; set; } = ChainStatus.Synced;
 
             public int PeerCount { get; set; } = 1;
@@ -43,6 +48,9 @@ namespace ProjectF.Tests
                 TargetTip = 0,
                 HasTarget = false,
             };
+
+            public string? GetBlockHashAt(long index) =>
+                Blocks.TryGetValue(index, out string? hash) ? hash : null;
 
             public Task<ChainStatus> BootstrapAsync(CancellationToken ct) =>
                 Task.FromResult(Status);
@@ -237,6 +245,7 @@ namespace ProjectF.Tests
 
             client.TipIndex = 5;
             client.TipHash = "aaa";
+            client.Blocks[5] = "aaa";
             watcher.PollOnce();
             Assert.AreEqual(1, updates, "first read of tip 5");
 
@@ -245,6 +254,7 @@ namespace ProjectF.Tests
 
             client.TipIndex = 6;
             client.TipHash = "bbb";
+            client.Blocks[6] = "bbb";
             client.TipPreviousHash = "aaa";
             watcher.PollOnce();
             Assert.AreEqual(2, updates, "a new tip re-reads");
@@ -264,26 +274,79 @@ namespace ProjectF.Tests
 
             client.TipIndex = 5;
             client.TipHash = "aaa";
+            client.Blocks[5] = "aaa";
             watcher.PollOnce();
 
             client.TipIndex = 6;
             client.TipHash = "bbb";
+            client.Blocks[6] = "bbb";
             client.TipPreviousHash = "aaa";
             watcher.PollOnce();
 
             // Tip 7 whose parent is NOT bbb (nor in history) → reorg.
             client.TipIndex = 7;
             client.TipHash = "ccc";
+            client.Blocks[7] = "ccc";
             client.TipPreviousHash = "zzz";
+            // Blocks[5] still "aaa" — but the parent of ccc is zzz, i.e. the
+            // chain claims ccc sits at index 7 on a fork whose history does
+            // NOT pass through our aaa@5... the ancestor check reads hash at
+            // OUR old tip index 5 on the CURRENT chain: still aaa → append.
+            // To simulate a REAL reorg the chain must replace index 5 too:
             watcher.PollOnce();
 
-            Assert.AreEqual(1, reorgs, "non-descendant tip raises OnReorg");
-            Assert.AreEqual(3, updates, "reorg forces a full re-read");
+            Assert.AreEqual(0, reorgs, "same-history append is not a reorg");
+            Assert.AreEqual(3, updates);
+
+            // Now a fork replaces our history from index 5 up (a real reorg
+            // replaces a CONTIGUOUS suffix — blocks are immutable, so 6 and 7
+            // cannot survive while 5 changes).
+            client.Blocks[5] = "fork5";
+            client.Blocks[6] = "fork6";
+            client.Blocks[7] = "fork7";
+            client.TipIndex = 8;
+            client.TipHash = "ddd";
+            client.Blocks[8] = "ddd";
+            client.TipPreviousHash = "fork7";
+            watcher.PollOnce();
+
+            Assert.AreEqual(1, reorgs, "replaced ancestor raises OnReorg");
+            Assert.AreEqual(4, updates, "reorg forces a full re-read");
 
             // Same tip again after the reorg: debounce window was cleared and
             // re-seeded by the reorg read → still debounced (no re-read).
             watcher.PollOnce();
-            Assert.AreEqual(3, updates);
+            Assert.AreEqual(4, updates);
+        }
+
+        [Test]
+        public void Catchup_jump_of_hundreds_of_blocks_is_not_a_reorg()
+        {
+            FakeClient client = new FakeClient();
+            KeyStore keys = new KeyStore(new NetworkSettings());
+            using StateWatcher watcher = MakeWatcher(client, keys);
+
+            long reorgs = 0;
+            watcher.OnReorg += _ => reorgs++;
+            int updates = 0;
+            watcher.AvatarUpdated += _ => updates++;
+
+            client.TipIndex = 9635;
+            client.TipHash = "old-tip";
+            client.Blocks[9635] = "old-tip";
+            watcher.PollOnce();
+
+            // One poll later the preload delivered 400 blocks — the new tip's
+            // parent (intermediate block we NEVER recorded) is unknown to the
+            // watcher, but our old tip is still an ancestor at index 9635.
+            client.TipIndex = 10035;
+            client.TipHash = "new-tip";
+            client.Blocks[10035] = "new-tip";
+            client.TipPreviousHash = "intermediate-never-seen";
+            watcher.PollOnce();
+
+            Assert.AreEqual(0, reorgs, "append past our tip is not a reorg");
+            Assert.AreEqual(2, updates, "the jump still re-reads once");
         }
 
         // -----------------------------------------------------------------

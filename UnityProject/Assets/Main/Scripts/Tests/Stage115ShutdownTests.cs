@@ -38,6 +38,8 @@ namespace ProjectF.Tests
 
             public string TipPreviousHash { get; set; } = string.Empty;
 
+            public string? GetBlockHashAt(long index) => null;
+
             public ChainStatus Status { get; set; } = ChainStatus.Offline;
 
             public int PeerCount => 0;

@@ -82,6 +82,29 @@ namespace ProjectF.Infrastructure.Blockchain
         // the previously-seen tip hash (genesis has no parent → empty).
         public string TipPreviousHash => _chain?.Tip.PreviousHash?.ToString() ?? string.Empty;
 
+        /// <summary>Hash at an exact index on the CURRENT chain (null outside
+        /// [0, tip]) — the ancestor check that lets StateWatcher tell a
+        /// multi-block catch-up jump apart from a genuine reorg.</summary>
+        public string? GetBlockHashAt(long index)
+        {
+            BlockChain? chain = _chain;
+            if (chain is null || index < 0 || index > chain.Tip.Index)
+            {
+                return null;
+            }
+
+            try
+            {
+                return chain[index].Hash.ToString();
+            }
+            catch (Exception)
+            {
+                // The tip can move between the bounds check and the indexer
+                // read; a transient miss must never crash the poll loop.
+                return null;
+            }
+        }
+
         public ChainStatus Status { get; private set; } = ChainStatus.Bootstrapping;
 
         public int PeerCount => _swarm?.Peers.Count ?? 0;

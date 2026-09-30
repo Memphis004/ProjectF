@@ -27,6 +27,13 @@ namespace ProjectF.Infrastructure.Blockchain
         /// tip actually EXTENDS the previous one — the reorg check.</summary>
         string TipPreviousHash { get; }
 
+        /// <summary>Hash of the block at <paramref name="index"/> on the
+        /// CURRENT chain, hex — null when the index is outside [0, tip] or
+        /// the chain is not bootstrapped. Lets StateWatcher distinguish a
+        /// catch-up jump (same hash at the old index → still our chain) from
+        /// a real reorg (different hash → history was replaced).</summary>
+        string? GetBlockHashAt(long index);
+
         ChainStatus Status { get; }
 
         /// <summary>Peer count from the swarm (0 when offline).</summary>

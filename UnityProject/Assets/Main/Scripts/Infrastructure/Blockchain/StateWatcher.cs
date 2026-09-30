@@ -159,24 +159,49 @@ namespace ProjectF.Infrastructure.Blockchain
 
             bool tipMoved = tip != _lastTip || tipHash != _lastTipHash;
 
-            // --- Stage 11: reorg detection -------------------------------
-            // The tip moved: the new tip extends the old one IFF its PARENT is
-            // the previously-seen tip (or already part of our recent history).
-            // If the parent is neither, blocks we already read state from were
-            // replaced → re-read everything from scratch and raise OnReorg.
+            // --- Stage 11 (revised): reorg detection ----------------------
+            // The old check compared the new tip's PARENT to a 64-entry hash
+            // window — but during catch-up the tip jumps hundreds of blocks
+            // between polls, landing on parents we never recorded, and every
+            // jump was misreported as a REORG (log spam + pointless full
+            // re-reads). The correct question is: does the CURRENT chain still
+            // have OUR hash at OUR old tip index? Yes → append (possibly a
+            // multi-block jump); No → history really was replaced.
             if (tipMoved && _lastTip >= 0 && tipHash != _lastTipHash)
             {
-                string parentHash = _client.TipPreviousHash;
-                bool descendant = string.IsNullOrEmpty(parentHash)
-                    || parentHash == _lastTipHash
-                    || _recentTipHashes.Contains(parentHash);
-                if (!descendant)
+                bool reorg;
+                if (tip > _lastTip)
                 {
-                    long depth = Math.Min(tip - _lastTip, Math.Max(1, _recentTipHashes.Count));
+                    // Forward move: append iff our old tip is still an
+                    // ancestor at the exact same index — this works for
+                    // multi-block catch-up jumps too (the old parent-window
+                    // check misflagged those as reorgs).
+                    string? ancestor = _client.GetBlockHashAt(_lastTip);
+                    reorg = ancestor is null || ancestor != _lastTipHash;
+                }
+                else if (_recentTipHashes.Contains(tipHash))
+                {
+                    // Regression onto an index we have seen with the SAME
+                    // hash — the same chain just walked back; nothing we
+                    // read was invalidated.
+                    reorg = false;
+                }
+                else
+                {
+                    // Same index with a different hash, or a regression to
+                    // an unknown hash — history was replaced (or forked)
+                    // below our view → full re-read.
+                    reorg = true;
+                }
+
+                if (reorg)
+                {
+                    long depth = Math.Max(1, _lastTip - tip);
                     Debug.LogWarning(
-                        $"[state] REORG detected at tip #{tip}: new tip's parent " +
-                        $"{Short(parentHash)} is neither the previous tip " +
-                        $"{Short(_lastTipHash)} nor in recent history — re-reading " +
+                        $"[state] REORG detected at tip #{tip}: our previous tip " +
+                        $"#{_lastTip} {Short(_lastTipHash)} is no longer on the " +
+                        $"current chain (hash there now: " +
+                        $"{Short(_client.GetBlockHashAt(_lastTip) ?? "?")}) — re-reading " +
                         "all watched state from scratch.");
                     RaiseOnMain(() => OnReorg?.Invoke(depth));
                     _readTips.Clear();
